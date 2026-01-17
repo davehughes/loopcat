@@ -191,6 +191,7 @@ class PlayerApp(App):
         Binding("l", "toggle_loop", "Loop"),
         Binding("left", "prev_patch", "Prev"),
         Binding("right", "next_patch", "Next"),
+        Binding("escape", "back_to_list", "Back"),
         Binding("q", "quit", "Quit"),
     ]
 
@@ -236,7 +237,7 @@ class PlayerApp(App):
         # Controls hint
         yield Static(
             "[bold]SPACE[/] All Play/Stop  │  [bold]1-3[/] Toggle Track  │  "
-            "[bold]←/→[/] Prev/Next  │  [bold]L[/] Loop  │  [bold]Q[/] Quit",
+            "[bold]←/→[/] Prev/Next  │  [bold]L[/] Loop  │  [bold]ESC[/] Back  │  [bold]Q[/] Quit",
             id="controls-hint",
         )
 
@@ -323,6 +324,12 @@ class PlayerApp(App):
         # Restart app with new patch (simple approach)
         self.exit(result=("switch", self.patch))
 
+    def action_back_to_list(self) -> None:
+        """Go back to patch selector."""
+        if self.player:
+            self.player.stop()
+        self.exit(result="back")
+
     def action_quit(self) -> None:
         """Quit the player."""
         if self.player:
@@ -330,12 +337,15 @@ class PlayerApp(App):
         self.exit()
 
 
-def run_player(patch: Patch, all_patches: Optional[list[Patch]] = None) -> None:
+def run_player(patch: Patch, all_patches: Optional[list[Patch]] = None) -> Optional[str]:
     """Run the TUI player for a patch.
 
     Args:
         patch: The patch to play.
         all_patches: All patches for prev/next navigation.
+
+    Returns:
+        "back" if user wants to return to patch selector, None otherwise.
     """
     current_patch = patch
     patches = all_patches or [patch]
@@ -346,5 +356,7 @@ def run_player(patch: Patch, all_patches: Optional[list[Patch]] = None) -> None:
 
         if isinstance(result, tuple) and result[0] == "switch":
             current_patch = result[1]
+        elif result == "back":
+            return "back"
         else:
-            break
+            return None

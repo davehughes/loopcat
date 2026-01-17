@@ -8,6 +8,7 @@ from rich.console import Console
 from rich.table import Table
 
 from loopcat import __version__
+from loopcat.config import DEFAULT_DB_PATH, DEFAULT_MP3_DIR, DEFAULT_WAV_DIR
 from loopcat.database import Database
 
 # ASCII logo
@@ -17,12 +18,8 @@ LOGO = """
     ╰─────╯  ═══════○
 """
 
-# Default paths
+# Default import source
 DEFAULT_SOURCE = Path("/Volumes/BOSS_RC-300")
-DEFAULT_DATA_DIR = Path.home() / ".loopcat"
-DEFAULT_DB_PATH = DEFAULT_DATA_DIR / "catalog.db"
-DEFAULT_WAV_DIR = DEFAULT_DATA_DIR / "wav"
-DEFAULT_MP3_DIR = DEFAULT_DATA_DIR / "mp3"
 
 app = typer.Typer(
     name="loopcat",

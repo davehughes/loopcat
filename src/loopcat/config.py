@@ -18,7 +18,22 @@ def get_config_dir() -> Path:
     return Path.home() / ".config" / "loopcat"
 
 
+def get_data_dir() -> Path:
+    """Get the data directory following XDG standard.
+
+    Uses $XDG_DATA_HOME/loopcat if set, otherwise ~/.local/share/loopcat.
+    """
+    xdg_data = os.environ.get("XDG_DATA_HOME")
+    if xdg_data:
+        return Path(xdg_data) / "loopcat"
+    return Path.home() / ".local" / "share" / "loopcat"
+
+
 DEFAULT_CONFIG_PATH = get_config_dir() / "config.yaml"
+DEFAULT_DATA_DIR = get_data_dir()
+DEFAULT_DB_PATH = DEFAULT_DATA_DIR / "catalog.db"
+DEFAULT_WAV_DIR = DEFAULT_DATA_DIR / "wav"
+DEFAULT_MP3_DIR = DEFAULT_DATA_DIR / "mp3"
 
 
 def load_config(config_path: Path = DEFAULT_CONFIG_PATH) -> dict:

@@ -128,14 +128,19 @@ loopcat export --format csv --output catalog.csv   # CSV spreadsheet
 
 ## Data Storage
 
-All data is stored in `~/.loopcat/`:
+Follows XDG Base Directory standard:
 
 ```
-~/.loopcat/
+~/.config/loopcat/
+└── config.yaml   # API keys and settings
+
+~/.local/share/loopcat/
 ├── catalog.db    # SQLite database with full-text search
 ├── wav/          # Managed WAV files
 └── mp3/          # Converted MP3 files
 ```
+
+Respects `XDG_CONFIG_HOME` and `XDG_DATA_HOME` if set.
 
 ## Patch vs Catalog Numbers
 

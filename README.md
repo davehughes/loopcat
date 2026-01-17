@@ -27,7 +27,7 @@ uv sync
 brew install ffmpeg
 
 # Set up Gemini API key (required for AI analysis)
-export GOOGLE_API_KEY="your-api-key"
+loopcat auth
 ```
 
 ## Quick Start
@@ -165,4 +165,4 @@ $ loopcat list --patch 42
 
 - Python 3.11+
 - ffmpeg (for MP3 conversion)
-- Google API key with Gemini access (for AI analysis)
+- Google API key with Gemini access (for AI analysis) - run `loopcat auth` to configure

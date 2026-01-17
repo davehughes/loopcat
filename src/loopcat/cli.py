@@ -55,6 +55,30 @@ def main(
     pass
 
 
+@app.command()
+def auth(
+    api_key: str = typer.Option(
+        None,
+        "--key",
+        "-k",
+        help="Gemini API key to store.",
+        prompt="Enter your Gemini API key",
+        hide_input=True,
+    ),
+) -> None:
+    """Configure Gemini API key for audio analysis."""
+    from loopcat.config import get_gemini_api_key, set_gemini_api_key
+
+    set_gemini_api_key(api_key)
+    console.print("[green]API key saved[/green] to ~/.loopcat/config.yaml")
+
+    # Verify it works
+    stored_key = get_gemini_api_key()
+    if stored_key:
+        masked = stored_key[:4] + "..." + stored_key[-4:]
+        console.print(f"Key: {masked}")
+
+
 @app.command("import")
 def import_(
     source: Path = typer.Argument(

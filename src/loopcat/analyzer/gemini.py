@@ -1,12 +1,12 @@
 """Gemini-based audio analysis."""
 
 import json
-import os
 from pathlib import Path
 
 from google import genai
 from google.genai import types
 
+from loopcat.config import get_gemini_api_key
 from loopcat.models import PatchAnalysis, TrackAnalysis
 
 # Analysis prompt template
@@ -75,9 +75,9 @@ def analyze_patch_with_gemini(
         ValueError: If GOOGLE_API_KEY is not set.
         Exception: If Gemini API call fails.
     """
-    api_key = os.environ.get("GOOGLE_API_KEY")
+    api_key = get_gemini_api_key()
     if not api_key:
-        raise ValueError("GOOGLE_API_KEY environment variable not set")
+        raise ValueError("Gemini API key not configured. Run 'loopcat auth' to set it.")
 
     client = genai.Client(api_key=api_key)
 

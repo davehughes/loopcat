@@ -13,6 +13,9 @@ dependencies = [
     "rich>=13.0.0",
     "pyyaml>=6.0.0",
     "xxhash>=3.0.0",
+    "textual>=0.50.0",
+    "sounddevice>=0.4.6",
+    "simple-term-menu>=1.6.0",
 ]
 
 [project.scripts]

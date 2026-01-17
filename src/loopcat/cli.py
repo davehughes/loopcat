@@ -242,6 +242,74 @@ def export(
     export_catalog(db, format, output, console)
 
 
+@app.command()
+def play(
+    patch: Optional[int] = typer.Argument(
+        None,
+        help="Patch catalog number to play. If omitted, shows a selector.",
+    ),
+    db_path: Path = typer.Option(
+        DEFAULT_DB_PATH,
+        "--db",
+        help="Path to the SQLite database.",
+    ),
+) -> None:
+    """Play a patch with TUI controls (mimics RC-300)."""
+    from simple_term_menu import TerminalMenu
+
+    from loopcat.tui import run_player
+
+    db = Database(db_path)
+    all_patches = db.get_all_patches()
+
+    if not all_patches:
+        console.print("[yellow]No patches in catalog. Run 'loopcat import' first.[/yellow]")
+        raise typer.Exit(1)
+
+    # If patch specified, use it directly
+    if patch is not None:
+        selected_patch = db.get_patch(patch)
+        if not selected_patch:
+            console.print(f"[red]Error:[/red] Patch #{patch} not found.")
+            raise typer.Exit(1)
+    else:
+        # Show patch selector
+        menu_entries = []
+        for p in all_patches:
+            name = p.analysis.suggested_name if p.analysis else f"Patch #{p.catalog_number}"
+            track_count = len(p.tracks)
+            total_duration = sum(t.duration_seconds for t in p.tracks)
+            menu_entries.append(
+                f"#{p.catalog_number:3d}  {name[:40]:<40}  {track_count} track(s), {total_duration:.1f}s"
+            )
+
+        menu = TerminalMenu(
+            menu_entries,
+            title="  Select a patch to play (/ to search, ↑↓ to navigate)\n",
+            search_key="/",
+            show_search_hint=True,
+        )
+
+        selected_index = menu.show()
+
+        if selected_index is None:
+            # User cancelled
+            raise typer.Exit(0)
+
+        selected_patch = all_patches[selected_index]
+
+    # Check if WAV files exist
+    missing_tracks = [t for t in selected_patch.tracks if not Path(t.wav_path).exists()]
+    if missing_tracks:
+        console.print(f"[red]Error:[/red] Missing WAV files for patch #{selected_patch.catalog_number}")
+        for t in missing_tracks:
+            console.print(f"  - {t.wav_path}")
+        raise typer.Exit(1)
+
+    # Run the TUI player
+    run_player(selected_patch, all_patches)
+
+
 def _print_patch(patch) -> None:
     """Print a patch with its tracks."""
     # Header

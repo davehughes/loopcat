@@ -45,6 +45,10 @@ loopcat analyze
 # 4. Browse your catalog
 loopcat list
 loopcat search "funky guitar"
+
+# 5. Play with TUI (RC-300 style controls)
+loopcat play              # Shows patch selector
+loopcat play 42           # Play specific patch
 ```
 
 ## Commands
@@ -112,6 +116,24 @@ loopcat search "ambient pad"
 ```
 
 Searches patch names, descriptions, moods, tags, track names, roles, and instruments.
+
+### `loopcat play [PATCH]`
+
+Launch the TUI player with RC-300 style controls.
+
+```bash
+loopcat play              # Shows patch selector (/ to search)
+loopcat play 42           # Play specific patch directly
+```
+
+**Controls:**
+| Key | Action |
+|-----|--------|
+| `SPACE` | All Play/Stop (toggle all tracks) |
+| `1` `2` `3` | Toggle individual tracks |
+| `←` `→` | Previous/Next patch |
+| `L` | Toggle loop mode |
+| `Q` | Quit |
 
 ### `loopcat export`
 

@@ -132,6 +132,7 @@ def analyze(
 
 
 @app.command("list")
+@app.command("ls", hidden=True)
 def list_patches(
     patch: Optional[int] = typer.Option(
         None,

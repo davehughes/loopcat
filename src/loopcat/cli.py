@@ -55,7 +55,7 @@ def main(
     pass
 
 
-@app.command()
+@app.command("import")
 def import_(
     source: Path = typer.Argument(
         DEFAULT_SOURCE,

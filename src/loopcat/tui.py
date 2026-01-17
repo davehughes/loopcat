@@ -29,6 +29,7 @@ class TrackWidget(Static):
         super().__init__(**kwargs)
         self.track = track
         self.track_number = track_number
+        self._is_playing = False
 
     def compose(self) -> ComposeResult:
         # Track name and info
@@ -39,15 +40,19 @@ class TrackWidget(Static):
         info_parts = [p for p in [role, key] if p]
         info_str = " • ".join(info_parts) if info_parts else ""
 
-        with Container(classes="track-container"):
+        with Container(classes="track-container", id=f"container-{self.track_number}"):
             with Horizontal(classes="track-header"):
-                yield Label(f"[bold cyan][{self.track_number}][/] {name}", classes="track-name")
-                yield Label("", id=f"status-{self.track_number}", classes="track-status")
+                yield Label(
+                    f"[bold white on dark_red] {self.track_number} [/] [bold]{name}[/]",
+                    id=f"track-label-{self.track_number}",
+                    classes="track-name",
+                )
+                yield Label("[dim]⏹ STOPPED[/]", id=f"status-{self.track_number}", classes="track-status")
             if info_str:
                 yield Label(f"[dim]{info_str}[/]", classes="track-info")
             with Horizontal(classes="track-progress"):
                 yield ProgressBar(total=100, show_eta=False, id=f"progress-{self.track_number}")
-                yield Label("", id=f"time-{self.track_number}", classes="track-time")
+                yield Label("0.0s / 0.0s", id=f"time-{self.track_number}", classes="track-time")
 
     def update_state(self, position: float, duration: float, playing: bool) -> None:
         """Update the track display state."""
@@ -64,12 +69,24 @@ class TrackWidget(Static):
         time_label = self.query_one(f"#time-{self.track_number}", Label)
         time_label.update(f"{position:.1f}s / {duration:.1f}s")
 
-        # Update status
+        # Update status and track label styling
         status_label = self.query_one(f"#status-{self.track_number}", Label)
-        if playing:
-            status_label.update("[bold green]▶ PLAYING[/]")
-        else:
-            status_label.update("[dim]⏹ STOPPED[/]")
+        track_label = self.query_one(f"#track-label-{self.track_number}", Label)
+        container = self.query_one(f"#container-{self.track_number}", Container)
+        name = self.track.analysis.suggested_name if self.track.analysis else self.track.filename
+
+        if playing != self._is_playing:
+            self._is_playing = playing
+            if playing:
+                status_label.update("[bold green]▶ PLAYING[/]")
+                track_label.update(f"[bold white on dark_green] {self.track_number} [/] [bold green]{name}[/]")
+                container.add_class("playing")
+                container.remove_class("stopped")
+            else:
+                status_label.update("[dim]⏹ STOPPED[/]")
+                track_label.update(f"[bold white on dark_red] {self.track_number} [/] [bold]{name}[/]")
+                container.remove_class("playing")
+                container.add_class("stopped")
 
 
 class PlayerApp(App):
@@ -107,12 +124,18 @@ class PlayerApp(App):
     .track-container {
         margin-bottom: 1;
         padding: 1;
-        border: solid $primary;
+        border: solid $error;
         height: auto;
     }
 
-    .track-container:focus-within {
-        border: solid $secondary;
+    .track-container.playing {
+        border: solid $success;
+        background: $success 10%;
+    }
+
+    .track-container.stopped {
+        border: solid $error;
+        background: $surface;
     }
 
     .track-header {
@@ -228,6 +251,12 @@ class PlayerApp(App):
             wav_path = Path(track.wav_path)
             if wav_path.exists():
                 self.player.load_track(track.track_number, wav_path)
+
+        # Set initial stopped state for all tracks
+        for track_num, widget in self.track_widgets.items():
+            info = self.player.get_track_info(track_num)
+            if info:
+                widget.update_state(0.0, info[1], False)
 
         self.player.start()
 

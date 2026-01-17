@@ -133,7 +133,28 @@ loopcat play 42           # Play specific patch directly
 | `1` `2` `3` | Toggle individual tracks |
 | `←` `→` | Previous/Next patch |
 | `L` | Toggle loop mode |
+| `ESC` | Back to patch selector |
 | `Q` | Quit |
+
+**Navigation flow:**
+```
+loopcat play
+    │
+    ▼
+┌─────────────────┐
+│ Patch Selector  │◄────────┐
+│ (/ to search)   │         │
+└────────┬────────┘         │
+         │ Enter            │ ESC
+         ▼                  │
+┌─────────────────┐         │
+│   TUI Player    │─────────┘
+│ (SPACE, 1-3, L) │
+└────────┬────────┘
+         │ Q
+         ▼
+       Exit
+```
 
 ### `loopcat export`
 

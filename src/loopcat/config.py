@@ -6,7 +6,19 @@ from typing import Optional
 
 import yaml
 
-DEFAULT_CONFIG_PATH = Path.home() / ".loopcat" / "config.yaml"
+
+def get_config_dir() -> Path:
+    """Get the config directory following XDG standard.
+
+    Uses $XDG_CONFIG_HOME/loopcat if set, otherwise ~/.config/loopcat.
+    """
+    xdg_config = os.environ.get("XDG_CONFIG_HOME")
+    if xdg_config:
+        return Path(xdg_config) / "loopcat"
+    return Path.home() / ".config" / "loopcat"
+
+
+DEFAULT_CONFIG_PATH = get_config_dir() / "config.yaml"
 
 
 def load_config(config_path: Path = DEFAULT_CONFIG_PATH) -> dict:

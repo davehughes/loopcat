@@ -69,8 +69,10 @@ def auth(
     """Configure Gemini API key for audio analysis."""
     from loopcat.config import get_gemini_api_key, set_gemini_api_key
 
+    from loopcat.config import DEFAULT_CONFIG_PATH
+
     set_gemini_api_key(api_key)
-    console.print("[green]API key saved[/green] to ~/.loopcat/config.yaml")
+    console.print(f"[green]API key saved[/green] to {DEFAULT_CONFIG_PATH}")
 
     # Verify it works
     stored_key = get_gemini_api_key()

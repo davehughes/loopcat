@@ -5,9 +5,8 @@ from typing import Optional
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.containers import Container, Horizontal, Vertical
-from textual.reactive import reactive
-from textual.widgets import Footer, Label, ProgressBar, Static
+from textual.containers import Container, Horizontal, VerticalScroll
+from textual.widgets import Footer, Label, Static
 
 from loopcat.models import Patch, Track
 from loopcat.player import AudioPlayer
@@ -16,77 +15,51 @@ from loopcat.player import AudioPlayer
 class TrackWidget(Static):
     """Widget displaying a single track with playback controls."""
 
-    position = reactive(0.0)
-    duration = reactive(1.0)
-    playing = reactive(False)
-
     def __init__(
         self,
         track: Track,
         track_number: int,
         **kwargs,
     ) -> None:
-        super().__init__(**kwargs)
+        # Build initial content first
+        name = track.analysis.suggested_name if track.analysis else track.filename
+        initial = f"[bold white on dark_red] {track_number} [/] [bold]{name}[/]  [dim]⏹ STOPPED[/]\n[cyan]{'░' * 20}[/] 0.0s / 0.0s"
+        super().__init__(initial, **kwargs)
+        # Set instance attributes after super().__init__
         self.track = track
         self.track_number = track_number
-        self._is_playing = False
+        self._position = 0.0
+        self._duration = 1.0
+        self._playing = False
 
-    def compose(self) -> ComposeResult:
-        # Track name and info
+    def _refresh_display(self) -> None:
+        """Render the track display."""
         name = self.track.analysis.suggested_name if self.track.analysis else self.track.filename
         role = self.track.analysis.role if self.track.analysis else ""
         key = self.track.detected_key or ""
 
         info_parts = [p for p in [role, key] if p]
-        info_str = " • ".join(info_parts) if info_parts else ""
+        info_str = f" ({', '.join(info_parts)})" if info_parts else ""
 
-        with Container(classes="track-container", id=f"container-{self.track_number}"):
-            with Horizontal(classes="track-header"):
-                yield Label(
-                    f"[bold white on dark_red] {self.track_number} [/] [bold]{name}[/]",
-                    id=f"track-label-{self.track_number}",
-                    classes="track-name",
-                )
-                yield Label("[dim]⏹ STOPPED[/]", id=f"status-{self.track_number}", classes="track-status")
-            if info_str:
-                yield Label(f"[dim]{info_str}[/]", classes="track-info")
-            with Horizontal(classes="track-progress"):
-                yield ProgressBar(total=100, show_eta=False, id=f"progress-{self.track_number}")
-                yield Label("0.0s / 0.0s", id=f"time-{self.track_number}", classes="track-time")
+        if self._playing:
+            status = "[bold green]▶ PLAYING[/]"
+            header = f"[bold white on dark_green] {self.track_number} [/] [bold green]{name}[/]{info_str}"
+        else:
+            status = "[dim]⏹ STOPPED[/]"
+            header = f"[bold white on dark_red] {self.track_number} [/] [bold]{name}[/]{info_str}"
+
+        pct = int((self._position / self._duration * 100) if self._duration > 0 else 0)
+        bar = "█" * (pct // 5) + "░" * (20 - pct // 5)
+        time_str = f"{self._position:.1f}s / {self._duration:.1f}s"
+
+        self.update(f"{header}  {status}\n[cyan]{bar}[/] {time_str}")
 
     def update_state(self, position: float, duration: float, playing: bool) -> None:
         """Update the track display state."""
-        self.position = position
-        self.duration = duration
-        self.playing = playing
-
-        # Update progress bar
-        progress = self.query_one(f"#progress-{self.track_number}", ProgressBar)
-        pct = (position / duration * 100) if duration > 0 else 0
-        progress.progress = pct
-
-        # Update time display
-        time_label = self.query_one(f"#time-{self.track_number}", Label)
-        time_label.update(f"{position:.1f}s / {duration:.1f}s")
-
-        # Update status and track label styling
-        status_label = self.query_one(f"#status-{self.track_number}", Label)
-        track_label = self.query_one(f"#track-label-{self.track_number}", Label)
-        container = self.query_one(f"#container-{self.track_number}", Container)
-        name = self.track.analysis.suggested_name if self.track.analysis else self.track.filename
-
-        if playing != self._is_playing:
-            self._is_playing = playing
-            if playing:
-                status_label.update("[bold green]▶ PLAYING[/]")
-                track_label.update(f"[bold white on dark_green] {self.track_number} [/] [bold green]{name}[/]")
-                container.add_class("playing")
-                container.remove_class("stopped")
-            else:
-                status_label.update("[dim]⏹ STOPPED[/]")
-                track_label.update(f"[bold white on dark_red] {self.track_number} [/] [bold]{name}[/]")
-                container.remove_class("playing")
-                container.add_class("stopped")
+        self._position = position
+        self._duration = duration
+        self._playing = playing
+        self._refresh_display()
 
 
 class PlayerApp(App):
@@ -121,57 +94,11 @@ class PlayerApp(App):
         padding: 1 2;
     }
 
-    .track-container {
+    TrackWidget {
         margin-bottom: 1;
         padding: 1;
-        border: solid $error;
+        border: solid $primary;
         height: auto;
-    }
-
-    .track-container.playing {
-        border: solid $success;
-        background: $success 10%;
-    }
-
-    .track-container.stopped {
-        border: solid $error;
-        background: $surface;
-    }
-
-    .track-header {
-        width: 100%;
-    }
-
-    .track-name {
-        width: 1fr;
-    }
-
-    .track-status {
-        width: auto;
-        text-align: right;
-    }
-
-    .track-info {
-        margin-top: 0;
-    }
-
-    .track-progress {
-        margin-top: 1;
-        width: 100%;
-    }
-
-    .track-time {
-        width: 16;
-        text-align: right;
-    }
-
-    ProgressBar {
-        width: 1fr;
-        padding-right: 1;
-    }
-
-    ProgressBar > .bar--complete {
-        color: $success;
     }
 
     #controls-hint {
@@ -228,7 +155,7 @@ class PlayerApp(App):
                 )
 
         # Tracks
-        with Vertical(id="tracks-container"):
+        with VerticalScroll(id="tracks-container"):
             for track in sorted(self.patch.tracks, key=lambda t: t.track_number):
                 widget = TrackWidget(track, track.track_number, id=f"track-{track.track_number}")
                 self.track_widgets[track.track_number] = widget

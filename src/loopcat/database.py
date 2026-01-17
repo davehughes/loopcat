@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Optional
 from uuid import uuid4
 
-from .models import Patch, PatchAnalysis, Track, TrackAnalysis
+from loopcat.models import Patch, PatchAnalysis, Track, TrackAnalysis
 
 # SQL schema
 SCHEMA = """

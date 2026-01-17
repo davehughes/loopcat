@@ -6,9 +6,9 @@ from typing import Optional
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
-from ..database import Database
-from .gemini import analyze_patch_with_gemini
-from .local import detect_bpm, detect_key
+from loopcat.database import Database
+from loopcat.analyzer.gemini import analyze_patch_with_gemini
+from loopcat.analyzer.local import detect_bpm, detect_key
 
 
 def analyze_patches(

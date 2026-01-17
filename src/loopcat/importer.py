@@ -9,8 +9,8 @@ import soundfile as sf
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
-from .database import Database
-from .hasher import compute_full_hash, compute_quick_hash
+from loopcat.database import Database
+from loopcat.hasher import compute_full_hash, compute_quick_hash
 
 # RC-300 file pattern: {bank}_{track}/{bank}_{track}.WAV
 # bank: 001-099 (3-digit zero-padded)

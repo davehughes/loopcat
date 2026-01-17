@@ -7,7 +7,7 @@ from typing import Optional
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
-from .database import Database
+from loopcat.database import Database
 
 
 def check_ffmpeg() -> bool:

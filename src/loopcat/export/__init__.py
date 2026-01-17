@@ -6,7 +6,7 @@ from pathlib import Path
 
 from rich.console import Console
 
-from ..database import Database
+from loopcat.database import Database
 
 
 def export_catalog(

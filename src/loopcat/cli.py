@@ -7,8 +7,8 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
-from . import __version__
-from .database import Database
+from loopcat import __version__
+from loopcat.database import Database
 
 # ASCII logo
 LOGO = """
@@ -74,7 +74,7 @@ def import_(
     ),
 ) -> None:
     """Import WAV files from RC-300 or backup folder."""
-    from .importer import import_from_source
+    from loopcat.importer import import_from_source
 
     if not source.exists():
         console.print(f"[red]Error:[/red] Source directory not found: {source}")
@@ -104,7 +104,7 @@ def convert(
     ),
 ) -> None:
     """Convert WAV files to MP3 for analysis."""
-    from .converter import convert_tracks
+    from loopcat.converter import convert_tracks
 
     db = Database(db_path)
     convert_tracks(db, mp3_dir, console, patch_number=patch)
@@ -125,7 +125,7 @@ def analyze(
     ),
 ) -> None:
     """Analyze patches with Gemini AI and librosa."""
-    from .analyzer import analyze_patches
+    from loopcat.analyzer import analyze_patches
 
     db = Database(db_path)
     analyze_patches(db, console, patch_number=patch)
@@ -212,7 +212,7 @@ def export(
     ),
 ) -> None:
     """Export catalog to various formats."""
-    from .export import export_catalog
+    from loopcat.export import export_catalog
 
     db = Database(db_path)
     export_catalog(db, format, output, console)

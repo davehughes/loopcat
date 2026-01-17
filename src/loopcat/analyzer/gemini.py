@@ -7,7 +7,7 @@ from pathlib import Path
 from google import genai
 from google.genai import types
 
-from ..models import PatchAnalysis, TrackAnalysis
+from loopcat.models import PatchAnalysis, TrackAnalysis
 
 # Analysis prompt template
 ANALYSIS_PROMPT = """You are analyzing audio loops from a Boss RC-300 looper pedal.

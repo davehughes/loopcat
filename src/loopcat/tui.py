@@ -27,7 +27,7 @@ class TrackWidget(Static):
     ) -> None:
         # Build initial content first
         name = track.analysis.suggested_name if track.analysis else track.filename
-        initial = f"[dim]⏹[/]  [bold white on dark_red] {track_number} [/] [bold]{name}[/]"
+        initial = f"[dim]⏹[/]  [bold white on $error] {track_number} [/] [bold]{name}[/]"
         super().__init__(initial, **kwargs)
         # Set instance attributes after super().__init__
         self.track = track
@@ -44,11 +44,11 @@ class TrackWidget(Static):
         info_str = f" [dim]({', '.join(info_parts)})[/]" if info_parts else ""
 
         if self._playing:
-            status = "[bold green]▶[/]"
-            header = f"[bold white on dark_green] {self.track_number} [/] [bold green]{name}[/]{info_str}"
+            status = "[bold $success]▶[/]"
+            header = f"[bold white on $success] {self.track_number} [/] [bold $success]{name}[/]{info_str}"
         else:
             status = "[dim]⏹[/]"
-            header = f"[bold white on dark_red] {self.track_number} [/] [bold]{name}[/]{info_str}"
+            header = f"[bold white on $error] {self.track_number} [/] [bold]{name}[/]{info_str}"
 
         self.update(f"{status}  {header}")
 
@@ -80,7 +80,7 @@ class ProgressBarWidget(Static):
         filled = pct * 30 // 100
         bar = "█" * filled + "░" * (30 - filled)
         time_str = f"{self._position:.1f}s / {self._duration:.1f}s"
-        bar_color = "cyan" if self._playing else "dim"
+        bar_color = "$accent" if self._playing else "dim"
 
         self.update(f"[{bar_color}]{bar}[/] {time_str}")
 

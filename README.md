@@ -246,17 +246,6 @@ $ loopcat list --patch 42
  3      Wah Lead          lead    32.5s     92   E minor
 ```
 
-### `loopcat theme [THEME]`
-
-Set the TUI color theme. Over 300 themes available including built-in Textual themes and Base16 color schemes.
-
-```bash
-loopcat theme                 # List available themes
-loopcat theme dracula         # Set theme
-```
-
-Press `t` in the TUI to open an interactive theme picker with live preview.
-
 ## Requirements
 
 - Python 3.11+

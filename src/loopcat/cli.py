@@ -51,8 +51,8 @@ def main(
 ) -> None:
     """Loopcat - Catalog your RC-300 loops with AI-powered analysis."""
     if ctx.invoked_subcommand is None:
-        # Default to play command
-        ctx.invoke(play)
+        # Default to play command with explicit defaults
+        ctx.invoke(play, patch=None, db_path=DEFAULT_DB_PATH)
 
 
 @app.command()

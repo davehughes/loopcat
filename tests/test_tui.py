@@ -6,7 +6,7 @@ from unittest.mock import patch, MagicMock
 import pytest
 
 from loopcat.models import Patch, Track
-from loopcat.tui import TrackWidget, PlayerApp, ThemePickerScreen, THEMES
+from loopcat.tui import TrackWidget, LoopCatApp, PlayerScreen, ThemePickerScreen, THEMES
 
 
 @pytest.fixture
@@ -98,29 +98,27 @@ class TestTrackWidget:
         assert widget._playing is True
 
 
-class TestPlayerApp:
-    """Tests for PlayerApp."""
+class TestLoopCatApp:
+    """Tests for LoopCatApp."""
 
-    def test_player_app_creation(self, sample_patch_single_track):
-        """Test that PlayerApp can be instantiated."""
-        app = PlayerApp(sample_patch_single_track)
-        assert app.patch == sample_patch_single_track
+    def test_app_creation(self, sample_patch_single_track):
+        """Test that LoopCatApp can be instantiated."""
+        app = LoopCatApp([sample_patch_single_track])
+        assert app.patches == [sample_patch_single_track]
 
-    def test_player_app_with_all_patches(self, sample_patch_single_track, sample_patch_multi_track):
-        """Test PlayerApp with multiple patches for navigation."""
+    def test_app_with_multiple_patches(self, sample_patch_single_track, sample_patch_multi_track):
+        """Test LoopCatApp with multiple patches."""
         patches = [sample_patch_single_track, sample_patch_multi_track]
-        app = PlayerApp(sample_patch_single_track, all_patches=patches)
+        app = LoopCatApp(patches)
 
-        assert len(app.all_patches) == 2
-        assert app.current_patch_index == 0
+        assert len(app.patches) == 2
 
-    def test_player_app_finds_current_patch_index(self, sample_patch_single_track, sample_patch_multi_track):
-        """Test that PlayerApp correctly finds the current patch in the list."""
+    def test_app_with_initial_patch(self, sample_patch_single_track, sample_patch_multi_track):
+        """Test that LoopCatApp can start with a specific patch."""
         patches = [sample_patch_single_track, sample_patch_multi_track]
-        # Start with the second patch
-        app = PlayerApp(sample_patch_multi_track, all_patches=patches)
+        app = LoopCatApp(patches, initial_patch=sample_patch_multi_track)
 
-        assert app.current_patch_index == 1
+        assert app.initial_patch == sample_patch_multi_track
 
     def test_patch_has_multiple_tracks(self, sample_patch_multi_track):
         """Test that multi-track patches have correct track count."""
@@ -131,22 +129,56 @@ class TestPlayerApp:
         assert track_numbers == [1, 2, 3]
 
 
-class TestPlayerAppAsync:
-    """Async tests for PlayerApp using Textual's test framework."""
+class TestPlayerScreen:
+    """Tests for PlayerScreen."""
+
+    def test_player_screen_creation(self, sample_patch_single_track):
+        """Test that PlayerScreen can be instantiated."""
+        screen = PlayerScreen(sample_patch_single_track, [sample_patch_single_track], 0)
+        assert screen.patch == sample_patch_single_track
+        assert screen.current_patch_index == 0
+
+    def test_player_screen_with_all_patches(self, sample_patch_single_track, sample_patch_multi_track):
+        """Test PlayerScreen with multiple patches for navigation."""
+        patches = [sample_patch_single_track, sample_patch_multi_track]
+        screen = PlayerScreen(sample_patch_single_track, patches, 0)
+
+        assert len(screen.all_patches) == 2
+        assert screen.current_patch_index == 0
+
+    def test_player_screen_finds_current_patch_index(self, sample_patch_single_track, sample_patch_multi_track):
+        """Test that PlayerScreen correctly uses the provided index."""
+        patches = [sample_patch_single_track, sample_patch_multi_track]
+        # Start with the second patch
+        screen = PlayerScreen(sample_patch_multi_track, patches, 1)
+
+        assert screen.current_patch_index == 1
+
+
+class TestLoopCatAppAsync:
+    """Async tests for LoopCatApp using Textual's test framework."""
 
     @pytest.mark.asyncio
     async def test_multi_track_patch_renders_all_tracks(self, sample_patch_multi_track):
         """Test that a multi-track patch renders a TrackWidget for each track."""
+        from loopcat.tui import PlayerScreen
+
         # Mock the AudioPlayer to avoid actual audio playback
         with patch('loopcat.tui.AudioPlayer') as MockPlayer:
             mock_player = MagicMock()
             mock_player.get_track_info.return_value = (0.0, 10.0, False)
             MockPlayer.return_value = mock_player
 
-            app = PlayerApp(sample_patch_multi_track)
+            app = LoopCatApp([sample_patch_multi_track], initial_patch=sample_patch_multi_track)
             async with app.run_test() as pilot:
-                # Query for all TrackWidget instances
-                track_widgets = app.query(TrackWidget)
+                # Wait for screens to be set up
+                await pilot.pause()
+
+                # Verify we're on the player screen
+                assert isinstance(app.screen, PlayerScreen)
+
+                # Query for all TrackWidget instances from the current screen
+                track_widgets = app.screen.query(TrackWidget)
                 widget_list = list(track_widgets)
 
                 # Should have 3 TrackWidgets for 3 tracks
@@ -159,14 +191,22 @@ class TestPlayerAppAsync:
     @pytest.mark.asyncio
     async def test_single_track_patch_renders_one_track(self, sample_patch_single_track):
         """Test that a single-track patch renders one TrackWidget."""
+        from loopcat.tui import PlayerScreen
+
         with patch('loopcat.tui.AudioPlayer') as MockPlayer:
             mock_player = MagicMock()
             mock_player.get_track_info.return_value = (0.0, 10.0, False)
             MockPlayer.return_value = mock_player
 
-            app = PlayerApp(sample_patch_single_track)
+            app = LoopCatApp([sample_patch_single_track], initial_patch=sample_patch_single_track)
             async with app.run_test() as pilot:
-                track_widgets = app.query(TrackWidget)
+                # Wait for screens to be set up
+                await pilot.pause()
+
+                # Verify we're on the player screen
+                assert isinstance(app.screen, PlayerScreen)
+
+                track_widgets = app.screen.query(TrackWidget)
                 widget_list = list(track_widgets)
 
                 assert len(widget_list) == 1
@@ -201,7 +241,7 @@ class TestThemePickerScreen:
             mock_player.get_track_info.return_value = (0.0, 10.0, False)
             MockPlayer.return_value = mock_player
 
-            app = PlayerApp(sample_patch_single_track)
+            app = LoopCatApp([sample_patch_single_track], initial_patch=sample_patch_single_track)
             async with app.run_test() as pilot:
                 # Press 't' to open theme picker (mimics user interaction)
                 await pilot.press("t")
@@ -229,7 +269,7 @@ class TestThemePickerScreen:
             mock_player.get_track_info.return_value = (0.0, 10.0, False)
             MockPlayer.return_value = mock_player
 
-            app = PlayerApp(sample_patch_single_track)
+            app = LoopCatApp([sample_patch_single_track], initial_patch=sample_patch_single_track)
             async with app.run_test() as pilot:
                 # Press 't' to open theme picker
                 await pilot.press("t")
@@ -257,7 +297,7 @@ class TestThemePickerScreen:
             mock_player.get_track_info.return_value = (0.0, 10.0, False)
             MockPlayer.return_value = mock_player
 
-            app = PlayerApp(sample_patch_single_track)
+            app = LoopCatApp([sample_patch_single_track], initial_patch=sample_patch_single_track)
             async with app.run_test() as pilot:
                 original_theme = app.theme
 
@@ -282,7 +322,7 @@ class TestThemePickerScreen:
             mock_player.get_track_info.return_value = (0.0, 10.0, False)
             MockPlayer.return_value = mock_player
 
-            app = PlayerApp(sample_patch_single_track)
+            app = LoopCatApp([sample_patch_single_track], initial_patch=sample_patch_single_track)
             async with app.run_test() as pilot:
                 # Press 't' to open theme picker
                 await pilot.press("t")
@@ -332,7 +372,7 @@ class TestThemePickerScreen:
 
             # Mock set_theme to verify it gets called
             with patch('loopcat.tui.set_theme') as mock_set_theme:
-                app = PlayerApp(sample_patch_single_track)
+                app = LoopCatApp([sample_patch_single_track], initial_patch=sample_patch_single_track)
                 async with app.run_test() as pilot:
                     original_theme = app.theme
 

@@ -24,7 +24,7 @@ DEFAULT_SOURCE = Path("/Volumes/BOSS_RC-300")
 app = typer.Typer(
     name="loopcat",
     help="Catalog WAV files from Boss RC-300 with AI-powered audio analysis.",
-    no_args_is_help=True,
+    invoke_without_command=True,
 )
 console = Console()
 
@@ -39,6 +39,7 @@ def version_callback(value: bool) -> None:
 
 @app.callback()
 def main(
+    ctx: typer.Context,
     version: Optional[bool] = typer.Option(
         None,
         "--version",
@@ -49,7 +50,9 @@ def main(
     ),
 ) -> None:
     """Loopcat - Catalog your RC-300 loops with AI-powered analysis."""
-    pass
+    if ctx.invoked_subcommand is None:
+        # Default to play command
+        ctx.invoke(play)
 
 
 @app.command()
@@ -492,9 +495,7 @@ def play(
     ),
 ) -> None:
     """Play a patch with TUI controls (mimics RC-300)."""
-    from simple_term_menu import TerminalMenu
-
-    from loopcat.tui import run_player
+    from loopcat.tui import run_app
 
     db = Database(db_path)
     all_patches = db.get_all_patches()
@@ -503,62 +504,16 @@ def play(
         console.print("[yellow]No patches in catalog. Run 'loopcat import' first.[/yellow]")
         raise typer.Exit(1)
 
-    # Build menu entries once
-    menu_entries = []
-    for p in all_patches:
-        name = p.analysis.suggested_name if p.analysis else f"Patch #{p.catalog_number}"
-        track_count = len(p.tracks)
-        total_duration = sum(t.duration_seconds for t in p.tracks)
-        menu_entries.append(
-            f"#{p.catalog_number:3d}  {name[:40]:<40}  {track_count} track(s), {total_duration:.1f}s"
-        )
-
     # If patch specified on command line, start with it
-    selected_patch = None
+    initial_patch = None
     if patch is not None:
-        selected_patch = db.get_patch(patch)
-        if not selected_patch:
+        initial_patch = db.get_patch(patch)
+        if not initial_patch:
             console.print(f"[red]Error:[/red] Patch #{patch} not found.")
             raise typer.Exit(1)
 
-    while True:
-        # Show patch selector if no patch selected
-        if selected_patch is None:
-            menu = TerminalMenu(
-                menu_entries,
-                title="  Select a patch to play (/ to search, ↑↓ to navigate, ESC to quit)\n",
-                search_key="/",
-                show_search_hint=True,
-                **get_menu_style(),
-            )
-
-            selected_index = menu.show()
-
-            if selected_index is None:
-                # User cancelled
-                break
-
-            selected_patch = all_patches[selected_index]
-
-        # Check if WAV files exist
-        missing_tracks = [t for t in selected_patch.tracks if not Path(t.wav_path).exists()]
-        if missing_tracks:
-            console.print(f"[red]Error:[/red] Missing WAV files for patch #{selected_patch.catalog_number}")
-            for t in missing_tracks:
-                console.print(f"  - {t.wav_path}")
-            selected_patch = None
-            continue
-
-        # Run the TUI player
-        result = run_player(selected_patch, all_patches)
-
-        if result == "back":
-            # User wants to go back to selector
-            selected_patch = None
-            continue
-        else:
-            # User quit
-            break
+    # Run the TUI app
+    run_app(all_patches, initial_patch)
 
 
 def _print_patch(patch) -> None:

@@ -6,8 +6,8 @@ from typing import Optional
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import VerticalScroll
-from textual.screen import ModalScreen
-from textual.widgets import Input, Label, OptionList, Static
+from textual.screen import ModalScreen, Screen
+from textual.widgets import Input, OptionList, Static
 from textual.widgets.option_list import Option
 
 from loopcat.base16_themes import BASE16_THEMES
@@ -97,16 +97,17 @@ class ControlsFooter(Static):
     }
     """
 
-    def __init__(self, **kwargs) -> None:
-        controls = (
-            "[dim]Track[/] [bold]1[/] [bold]2[/] [bold]3[/]  "
-            "[dim]All[/] [bold]␣[/]  "
-            "[dim]Patch[/] [bold]h[/] [bold]←[/] [bold]→[/] [bold]l[/]  "
-            "[bold]t[/] [dim]Theme[/]  "
-            "[bold]q[/] [bold],[/] [dim]Choose[/]  "
-            "[bold]esc[/] [dim]Quit[/]"
-        )
-        super().__init__(controls, **kwargs)
+    def __init__(self, content: Optional[str] = None, **kwargs) -> None:
+        if content is None:
+            content = (
+                "[dim]track[/] [bold]1[/] [bold]2[/] [bold]3[/]  "
+                "[dim]start/stop all[/] [bold]␣[/]  "
+                "[dim]patch[/] [bold]h[/] [bold]←[/] [bold]→[/] [bold]l[/]  "
+                "[bold]t[/] [dim]theme[/]  "
+                "[bold]q[/] [bold],[/] [dim]choose[/]  "
+                "[bold]esc[/] [dim]quit[/]"
+            )
+        super().__init__(content, **kwargs)
 
 
 # Built-in Textual themes + base16 themes (deduplicated)
@@ -171,7 +172,7 @@ class ThemePickerScreen(ModalScreen[str | None]):
         with VerticalScroll(id="theme-dialog"):
             yield Input(placeholder="Type to filter themes...", id="theme-search")
             yield OptionList(*[Option(t, id=t) for t in THEMES], id="theme-list")
-            yield Static("[dim]Enter[/] Select  [dim]Esc[/] Cancel", id="theme-hint")
+            yield Static("[dim]enter[/] select  [dim]esc[/] cancel", id="theme-hint")
 
     def on_mount(self) -> None:
         # Focus search and highlight current theme after children are ready
@@ -242,11 +243,156 @@ class ThemePickerScreen(ModalScreen[str | None]):
             self.dismiss(event.option.id)
 
 
-class PlayerApp(App):
-    """TUI application for playing patches."""
+class PatchPickerScreen(Screen):
+    """Screen for selecting a patch to play."""
 
     CSS = """
-    Screen {
+    PatchPickerScreen {
+        background: $surface;
+    }
+
+    #picker-header {
+        dock: top;
+        height: 1;
+        background: $primary;
+        padding: 0 1;
+    }
+
+    #picker-container {
+        padding: 1;
+    }
+
+    #patch-search {
+        dock: top;
+        margin-bottom: 1;
+    }
+
+    #patch-list {
+        height: 1fr;
+    }
+    """
+
+    BINDINGS = [
+        Binding("escape", "quit", show=False),
+        Binding("enter", "select", "Select", priority=True),
+        Binding("down", "cursor_down", show=False),
+        Binding("up", "cursor_up", show=False),
+        Binding("j", "cursor_down", show=False),
+        Binding("k", "cursor_up", show=False),
+        Binding("ctrl+j", "cursor_down", show=False),
+        Binding("ctrl+k", "cursor_up", show=False, priority=True),
+        Binding("ctrl+n", "cursor_down", show=False),
+        Binding("t", "cycle_theme", show=False),
+    ]
+
+    def __init__(self, patches: list[Patch], selected_index: int = 0) -> None:
+        super().__init__()
+        self.patches = patches
+        self.selected_index = selected_index
+        self.filter_text = ""
+        self._filtered_patches = patches.copy()
+
+    def compose(self) -> ComposeResult:
+        yield Static("[bold]LOOPCAT[/] │ Select a patch to play", id="picker-header")
+        with VerticalScroll(id="picker-container"):
+            yield Input(placeholder="Type to filter patches...", id="patch-search")
+            yield OptionList(*self._build_options(), id="patch-list")
+        yield ControlsFooter(
+            "[bold]C-j[/] [bold]↑[/] [bold]↓[/] [bold]C-k[/] [dim]navigate[/]  "
+            "[bold]enter[/] [dim]play[/]  "
+            "[bold]t[/] [dim]theme[/]  "
+            "[bold]esc[/] [dim]quit[/]"
+        )
+
+    def _build_options(self) -> list[Option]:
+        """Build option list entries from patches."""
+        options = []
+        for p in self._filtered_patches:
+            name = p.analysis.suggested_name if p.analysis else f"Patch #{p.catalog_number}"
+            track_count = len(p.tracks)
+            total_duration = sum(t.duration_seconds for t in p.tracks)
+            label = f"#{p.catalog_number:3d}  {name[:40]:<40}  {track_count} track(s), {total_duration:.1f}s"
+            options.append(Option(label, id=p.id))
+        return options
+
+    def on_mount(self) -> None:
+        self.call_after_refresh(self._setup_initial_state)
+
+    def _setup_initial_state(self) -> None:
+        """Set initial focus and selection."""
+        self.query_one("#patch-search", Input).focus()
+        option_list = self.query_one("#patch-list", OptionList)
+        if option_list.option_count > 0 and self.selected_index < option_list.option_count:
+            option_list.highlighted = self.selected_index
+
+    def on_input_changed(self, event: Input.Changed) -> None:
+        """Filter patches as user types."""
+        self.filter_text = event.value.lower()
+        option_list = self.query_one("#patch-list", OptionList)
+        option_list.clear_options()
+
+        self._filtered_patches = [
+            p for p in self.patches
+            if self.filter_text in (p.analysis.suggested_name if p.analysis else f"Patch #{p.catalog_number}").lower()
+        ]
+        option_list.add_options(self._build_options())
+        if self._filtered_patches:
+            option_list.highlighted = 0
+
+    def _move_highlight(self, delta: int) -> None:
+        """Move the option list highlight by delta."""
+        option_list = self.query_one("#patch-list", OptionList)
+        if option_list.option_count == 0:
+            return
+        if option_list.highlighted is None:
+            option_list.highlighted = 0
+        else:
+            new_idx = option_list.highlighted + delta
+            option_list.highlighted = max(0, min(new_idx, option_list.option_count - 1))
+
+    def action_cursor_down(self) -> None:
+        self._move_highlight(1)
+
+    def action_cursor_up(self) -> None:
+        self._move_highlight(-1)
+
+    def action_quit(self) -> None:
+        self.app.exit()
+
+    def action_select(self) -> None:
+        """Select the highlighted patch and switch to player."""
+        option_list = self.query_one("#patch-list", OptionList)
+        if option_list.highlighted is not None and option_list.option_count > 0:
+            option = option_list.get_option_at_index(option_list.highlighted)
+            if option:
+                # Find the patch by id
+                patch = next((p for p in self._filtered_patches if p.id == option.id), None)
+                if patch:
+                    # Find index in original list
+                    idx = next((i for i, p in enumerate(self.patches) if p.id == patch.id), 0)
+                    self.app.push_screen(PlayerScreen(patch, self.patches, idx))
+
+    def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
+        """Handle double-click/enter on option."""
+        self.action_select()
+
+    def action_cycle_theme(self) -> None:
+        """Open theme picker."""
+        self.app.push_screen(ThemePickerScreen(self.app.theme), self._on_theme_selected)
+
+    def _on_theme_selected(self, theme: str | None) -> None:
+        """Handle theme selection from picker."""
+        if theme:
+            self.app.theme = theme
+            set_theme(theme)
+            self.app.notify(f"Theme: {theme}")
+
+
+class PlayerScreen(Screen):
+    """Screen for playing a patch with TUI controls."""
+
+    CSS = """
+    PlayerScreen {
         background: $surface;
     }
 
@@ -294,20 +440,13 @@ class PlayerApp(App):
     def __init__(
         self,
         patch: Patch,
-        all_patches: Optional[list[Patch]] = None,
-        **kwargs,
+        all_patches: list[Patch],
+        current_index: int,
     ) -> None:
-        super().__init__(**kwargs)
-        # Register base16 themes
-        for theme in BASE16_THEMES:
-            self.register_theme(theme)
-        self.theme = get_theme()
+        super().__init__()
         self.patch = patch
-        self.all_patches = all_patches or [patch]
-        self.current_patch_index = next(
-            (i for i, p in enumerate(self.all_patches) if p.id == patch.id),
-            0,
-        )
+        self.all_patches = all_patches
+        self.current_patch_index = current_index
         self.player: Optional[AudioPlayer] = None
         self.track_widgets: dict[int, TrackWidget] = {}
         self.progress_bar: Optional[ProgressBarWidget] = None
@@ -335,7 +474,7 @@ class PlayerApp(App):
         yield ControlsFooter()
 
     def on_mount(self) -> None:
-        """Initialize audio player when app starts."""
+        """Initialize audio player when screen mounts."""
         self.player = AudioPlayer(on_position_update=self._on_position_update)
 
         # Load all tracks
@@ -361,13 +500,13 @@ class PlayerApp(App):
             widget.update_state(True)
 
     def on_unmount(self) -> None:
-        """Clean up audio player when app exits."""
+        """Clean up audio player when screen unmounts."""
         if self.player:
             self.player.stop()
 
     def _on_position_update(self, positions: dict[int, tuple[float, float, bool]]) -> None:
         """Handle position updates from audio player."""
-        self.call_from_thread(self._update_track_displays, positions)
+        self.app.call_from_thread(self._update_track_displays, positions)
 
     def _update_track_displays(self, positions: dict[int, tuple[float, float, bool]]) -> None:
         """Update track widgets and progress bar with new positions."""
@@ -417,17 +556,16 @@ class PlayerApp(App):
         if self.player:
             self.player.toggle_track(3)
 
-
     def action_cycle_theme(self) -> None:
         """Open theme picker."""
-        self.push_screen(ThemePickerScreen(self.theme), self._on_theme_selected)
+        self.app.push_screen(ThemePickerScreen(self.app.theme), self._on_theme_selected)
 
     def _on_theme_selected(self, theme: str | None) -> None:
         """Handle theme selection from picker."""
         if theme:
-            self.theme = theme
+            self.app.theme = theme
             set_theme(theme)
-            self.notify(f"Theme: {theme}")
+            self.app.notify(f"Theme: {theme}")
 
     def action_prev_patch(self) -> None:
         """Go to previous patch."""
@@ -445,44 +583,85 @@ class PlayerApp(App):
             self.player.stop()
 
         self.current_patch_index = new_index
-        self.patch = self.all_patches[new_index]
+        new_patch = self.all_patches[new_index]
 
-        # Restart app with new patch (simple approach)
-        self.exit(result=("switch", self.patch))
+        # Pop this screen and push new player screen
+        self.app.pop_screen()
+        self.app.push_screen(PlayerScreen(new_patch, self.all_patches, new_index))
 
     def action_back_to_list(self) -> None:
         """Go back to patch selector."""
         if self.player:
             self.player.stop()
-        self.exit(result="back")
+        # Pop back to picker, updating selected index
+        self.app.pop_screen()
+        # Update picker's selected index
+        picker = self.app.screen
+        if isinstance(picker, PatchPickerScreen):
+            picker.selected_index = self.current_patch_index
+            option_list = picker.query_one("#patch-list", OptionList)
+            if option_list.option_count > self.current_patch_index:
+                option_list.highlighted = self.current_patch_index
 
     def action_quit(self) -> None:
-        """Quit the player."""
+        """Quit the application."""
         if self.player:
             self.player.stop()
-        self.exit()
+        self.app.exit()
 
 
+class LoopCatApp(App):
+    """Main TUI application for loopcat."""
+
+    CSS = """
+    Screen {
+        background: $surface;
+    }
+    """
+
+    def __init__(self, patches: list[Patch], initial_patch: Optional[Patch] = None) -> None:
+        super().__init__()
+        # Register base16 themes
+        for theme in BASE16_THEMES:
+            self.register_theme(theme)
+        self.theme = get_theme()
+        self.patches = patches
+        self.initial_patch = initial_patch
+
+    def on_mount(self) -> None:
+        """Set up initial screen."""
+        if self.initial_patch:
+            # Start directly in player mode
+            idx = next((i for i, p in enumerate(self.patches) if p.id == self.initial_patch.id), 0)
+            self.push_screen(PatchPickerScreen(self.patches, idx))
+            self.push_screen(PlayerScreen(self.initial_patch, self.patches, idx))
+        else:
+            # Start with patch picker
+            self.push_screen(PatchPickerScreen(self.patches))
+
+
+def run_app(patches: list[Patch], initial_patch: Optional[Patch] = None) -> None:
+    """Run the loopcat TUI application.
+
+    Args:
+        patches: All patches in the catalog.
+        initial_patch: Optional patch to start playing immediately.
+    """
+    app = LoopCatApp(patches, initial_patch)
+    app.run()
+
+
+# Legacy function for backwards compatibility
 def run_player(patch: Patch, all_patches: Optional[list[Patch]] = None) -> Optional[str]:
-    """Run the TUI player for a patch.
+    """Run the TUI player for a patch (legacy interface).
 
     Args:
         patch: The patch to play.
         all_patches: All patches for prev/next navigation.
 
     Returns:
-        "back" if user wants to return to patch selector, None otherwise.
+        None (legacy return value no longer used).
     """
-    current_patch = patch
     patches = all_patches or [patch]
-
-    while True:
-        app = PlayerApp(current_patch, patches)
-        result = app.run()
-
-        if isinstance(result, tuple) and result[0] == "switch":
-            current_patch = result[1]
-        elif result == "back":
-            return "back"
-        else:
-            return None
+    run_app(patches, patch)
+    return None

@@ -1087,15 +1087,18 @@ class GridScreen(Screen):
 
         pad = self._pads[grid_key]
 
+        # Timing constants (in seconds)
+        INITIAL_HOLD_TIME = 0.5  # Wait for first repeat (system's "delay until repeat")
+        REPEAT_HOLD_TIME = 0.12  # Wait between repeats (system's "key repeat rate")
+
         # Check if key is already held (this is a repeat)
         if grid_key in self._held_keys:
-            # Cancel existing release timer and restart it
+            # Cancel existing release timer and restart with shorter repeat interval
             existing_timer = self._held_keys[grid_key]
             if existing_timer:
                 existing_timer.stop()
-            # Set new timer for release detection
             self._held_keys[grid_key] = self.set_timer(
-                0.15, lambda k=grid_key, p=pad: self._key_release_timeout(k, p)
+                REPEAT_HOLD_TIME, lambda k=grid_key, p=pad: self._key_release_timeout(k, p)
             )
             return
 
@@ -1103,9 +1106,9 @@ class GridScreen(Screen):
         velocity = 40 if has_shift else 100
         self._press_pad(pad, velocity)
 
-        # Start release detection timer
+        # Start release detection timer with longer initial delay
         self._held_keys[grid_key] = self.set_timer(
-            0.15, lambda k=grid_key, p=pad: self._key_release_timeout(k, p)
+            INITIAL_HOLD_TIME, lambda k=grid_key, p=pad: self._key_release_timeout(k, p)
         )
 
     def _key_release_timeout(self, grid_key: str, pad: PadWidget) -> None:

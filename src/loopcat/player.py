@@ -23,7 +23,6 @@ class TrackState:
     data: np.ndarray
     playing: bool = False
     position: int = 0  # Current sample position
-    loop: bool = True
 
 
 @dataclass
@@ -33,7 +32,6 @@ class PlayerState:
     tracks: dict[int, TrackState] = field(default_factory=dict)
     master_playing: bool = False
     master_position: int = 0  # Global sample counter for sync
-    loop: bool = True
     _stream: Optional[sd.OutputStream] = None
     _lock: threading.Lock = field(default_factory=threading.Lock)
     _on_position_update: Optional[Callable] = None
@@ -82,7 +80,6 @@ class AudioPlayer:
                 data=data,
                 playing=False,
                 position=0,
-                loop=self.state.loop,
             )
 
         # Update player sample rate to match first track
@@ -110,8 +107,8 @@ class AudioPlayer:
                 if end <= track_len:
                     # Normal playback within track bounds
                     chunk = track.data[start:end]
-                elif track.loop:
-                    # Loop: wrap around
+                else:
+                    # Wrap around for looping
                     remaining = track_len - start
                     if remaining > 0:
                         chunk = np.vstack([
@@ -120,13 +117,6 @@ class AudioPlayer:
                         ])
                     else:
                         chunk = track.data[: frames]
-                else:
-                    # No loop: play what's left, then stop
-                    chunk = np.zeros((frames, 2), dtype="float32")
-                    remaining = track_len - start
-                    if remaining > 0:
-                        chunk[:remaining] = track.data[start:]
-                    track.playing = False
 
                 # Update track position for display purposes
                 track.position = (start + frames) % track_len
@@ -262,17 +252,6 @@ class AudioPlayer:
                 for track in self.state.tracks.values():
                     track.playing = True
                 self.state.master_playing = True
-
-    def set_loop(self, loop: bool) -> None:
-        """Set loop mode for all tracks.
-
-        Args:
-            loop: Whether to loop playback.
-        """
-        with self.state._lock:
-            self.state.loop = loop
-            for track in self.state.tracks.values():
-                track.loop = loop
 
     def is_playing(self, track_number: Optional[int] = None) -> bool:
         """Check if a track (or any track) is playing.

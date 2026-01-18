@@ -105,7 +105,6 @@ class TestPlayerApp:
         """Test that PlayerApp can be instantiated."""
         app = PlayerApp(sample_patch_single_track)
         assert app.patch == sample_patch_single_track
-        assert app.loop_mode is True
 
     def test_player_app_with_all_patches(self, sample_patch_single_track, sample_patch_multi_track):
         """Test PlayerApp with multiple patches for navigation."""

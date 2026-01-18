@@ -7,7 +7,7 @@ from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import VerticalScroll
 from textual.screen import ModalScreen
-from textual.widgets import Footer, Input, Label, OptionList, Static
+from textual.widgets import Input, Label, OptionList, Static
 from textual.widgets.option_list import Option
 
 from loopcat.base16_themes import BASE16_THEMES
@@ -83,6 +83,30 @@ class ProgressBarWidget(Static):
         bar_color = "cyan" if self._playing else "dim"
 
         self.update(f"[{bar_color}]{bar}[/] {time_str}")
+
+
+class ControlsFooter(Static):
+    """Custom footer widget with grouped controls."""
+
+    DEFAULT_CSS = """
+    ControlsFooter {
+        dock: bottom;
+        height: 1;
+        background: $primary;
+        padding: 0 1;
+    }
+    """
+
+    def __init__(self, **kwargs) -> None:
+        controls = (
+            "[dim]Track[/] [bold]1[/] [bold]2[/] [bold]3[/]  "
+            "[dim]All[/] [bold]␣[/]  "
+            "[dim]Patch[/] [bold]h[/] [bold]←[/] [bold]→[/] [bold]l[/]  "
+            "[bold]t[/] [dim]Theme[/]  "
+            "[bold]q[/] [bold],[/] [dim]Choose[/]  "
+            "[bold]esc[/] [dim]Quit[/]"
+        )
+        super().__init__(controls, **kwargs)
 
 
 # Built-in Textual themes + base16 themes (deduplicated)
@@ -253,16 +277,18 @@ class PlayerApp(App):
     """
 
     BINDINGS = [
-        Binding("space", "toggle_all", "All"),
-        Binding("1", "toggle_track_1", "Trk1"),
-        Binding("2", "toggle_track_2", "Trk2"),
-        Binding("3", "toggle_track_3", "Trk3"),
-        Binding("l", "toggle_loop", "Loop"),
-        Binding("t", "cycle_theme", "Theme"),
-        Binding("left", "prev_patch", "Prev"),
-        Binding("right", "next_patch", "Next"),
-        Binding("escape", "back_to_list", "Back"),
-        Binding("q", "quit", "Quit"),
+        Binding("space", "toggle_all", show=False),
+        Binding("1", "toggle_track_1", show=False),
+        Binding("2", "toggle_track_2", show=False),
+        Binding("3", "toggle_track_3", show=False),
+        Binding("t", "cycle_theme", show=False),
+        Binding("left", "prev_patch", show=False),
+        Binding("right", "next_patch", show=False),
+        Binding("h", "prev_patch", show=False),
+        Binding("l", "next_patch", show=False),
+        Binding("q", "back_to_list", show=False),
+        Binding("comma", "back_to_list", show=False),
+        Binding("escape", "quit", show=False),
     ]
 
     def __init__(
@@ -285,7 +311,6 @@ class PlayerApp(App):
         self.player: Optional[AudioPlayer] = None
         self.track_widgets: dict[int, TrackWidget] = {}
         self.progress_bar: Optional[ProgressBarWidget] = None
-        self.loop_mode = True
 
     def compose(self) -> ComposeResult:
         # Header (single line)
@@ -307,7 +332,7 @@ class PlayerApp(App):
                 self.track_widgets[track.track_number] = widget
                 yield widget
 
-        yield Footer()
+        yield ControlsFooter()
 
     def on_mount(self) -> None:
         """Initialize audio player when app starts."""
@@ -319,19 +344,21 @@ class PlayerApp(App):
             if wav_path.exists():
                 self.player.load_track(track.track_number, wav_path)
 
-        # Set initial stopped state for all tracks
-        for track_num, widget in self.track_widgets.items():
-            widget.update_state(False)
-
         # Set initial progress bar state (use longest track duration)
         max_duration = max(
             (self.player.get_track_info(t.track_number) or (0, 0, False))[1]
             for t in self.patch.tracks
         ) or 1.0
         if self.progress_bar:
-            self.progress_bar.update_state(0.0, max_duration, False)
+            self.progress_bar.update_state(0.0, max_duration, True)
 
+        # Start audio stream and autoplay all tracks
         self.player.start()
+        self.player.play_all()
+
+        # Update widgets to show playing state
+        for track_num, widget in self.track_widgets.items():
+            widget.update_state(True)
 
     def on_unmount(self) -> None:
         """Clean up audio player when app exits."""
@@ -390,12 +417,6 @@ class PlayerApp(App):
         if self.player:
             self.player.toggle_track(3)
 
-    def action_toggle_loop(self) -> None:
-        """Toggle loop mode."""
-        if self.player:
-            self.loop_mode = not self.loop_mode
-            self.player.set_loop(self.loop_mode)
-            self.notify(f"Loop: {'ON' if self.loop_mode else 'OFF'}")
 
     def action_cycle_theme(self) -> None:
         """Open theme picker."""

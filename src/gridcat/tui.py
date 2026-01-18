@@ -1,10 +1,12 @@
 """TUI interface for gridcat - a MIDI grid controller."""
 
+import time
+from dataclasses import dataclass
 from typing import Optional
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.containers import Container, Horizontal, Vertical
+from textual.containers import Container, Horizontal, Vertical, ScrollableContainer
 from textual.reactive import reactive
 from textual.screen import ModalScreen, Screen
 from textual.widgets import Static, OptionList, Label
@@ -183,6 +185,172 @@ class PadRow(Horizontal):
         height: auto;
         width: auto;
         margin-bottom: 1;
+    }
+    """
+
+
+@dataclass
+class MidiLogEntry:
+    """A logged MIDI message."""
+
+    message: str
+    timestamp: float
+    key_label: str = ""
+
+
+class MidiLog(Static):
+    """Scrolling log of MIDI messages with fade effect."""
+
+    DEFAULT_CSS = """
+    MidiLog {
+        height: 100%;
+        width: 100%;
+        padding: 0 1;
+    }
+    """
+
+    # Fade timing in seconds
+    FADE_START = 2.0  # Start fading after this
+    FADE_END = 5.0  # Fully faded at this point
+    REMOVE_AT = 6.0  # Remove from log after this
+
+    def __init__(self, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self._entries: list[MidiLogEntry] = []
+        self._update_timer = None
+
+    def on_mount(self) -> None:
+        """Start the update timer."""
+        self._update_timer = self.set_interval(0.2, self._tick)
+
+    def _tick(self) -> None:
+        """Update display and remove old entries."""
+        now = time.time()
+        # Remove entries older than REMOVE_AT
+        self._entries = [e for e in self._entries if now - e.timestamp < self.REMOVE_AT]
+        self.refresh()
+
+    def add_message(self, message: str, key_label: str = "") -> None:
+        """Add a new message to the log."""
+        self._entries.append(MidiLogEntry(message, time.time(), key_label))
+        # Keep only last 20 entries
+        if len(self._entries) > 20:
+            self._entries = self._entries[-20:]
+        self.refresh()
+
+    def render(self) -> str:
+        """Render the log with fading effect."""
+        if not self._entries:
+            return "[dim]No messages yet[/]"
+
+        now = time.time()
+        lines = []
+
+        for entry in reversed(self._entries):  # Newest first
+            age = now - entry.timestamp
+
+            # Determine style based on age
+            if age < self.FADE_START:
+                # Fresh - bright
+                style = "bold"
+            elif age < self.FADE_END:
+                # Fading
+                style = ""
+            else:
+                # Very faded
+                style = "dim"
+
+            if entry.key_label:
+                line = f"[{style}][{entry.key_label}][/] [{style}]{entry.message}[/]"
+            else:
+                line = f"[{style}]{entry.message}[/]"
+            lines.append(line)
+
+        return "\n".join(lines)
+
+
+class PadDetails(Static):
+    """Display details of the selected pad."""
+
+    DEFAULT_CSS = """
+    PadDetails {
+        height: auto;
+        width: 100%;
+        padding: 1;
+        border-bottom: solid $primary-darken-2;
+    }
+    """
+
+    def __init__(self, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self._pad: Optional[PadWidget] = None
+
+    def set_pad(self, pad: Optional["PadWidget"]) -> None:
+        """Set the pad to display details for."""
+        self._pad = pad
+        self.refresh()
+
+    def render(self) -> str:
+        """Render pad details."""
+        if not self._pad:
+            return "[dim]No pad selected[/]\n\n[dim]Use Ctrl+hjkl to select[/]"
+
+        pad = self._pad
+        cfg = pad.config
+        lines = [f"[bold]Pad [{pad.key_label}][/]", ""]
+
+        if cfg.msg_type == "note":
+            lines.append(f"Type: [bold]Note[/]")
+            lines.append(f"Note: [bold]{note_to_name(cfg.note)}[/] ({cfg.note})")
+            lines.append(f"Velocity: [bold]{cfg.velocity}[/]")
+        elif cfg.msg_type == "cc":
+            lines.append(f"Type: [bold]CC[/]")
+            lines.append(f"CC#: [bold]{cfg.cc_number}[/]")
+            lines.append(f"Value: [bold]{cfg.cc_value}[/]")
+        elif cfg.msg_type == "pc":
+            lines.append(f"Type: [bold]Program Change[/]")
+            lines.append(f"Program: [bold]{cfg.pc_number}[/]")
+
+        if cfg.label:
+            lines.append(f"Label: [bold]{cfg.label}[/]")
+
+        lines.append("")
+        lines.append("[dim]Ctrl+Enter to edit[/]")
+
+        return "\n".join(lines)
+
+
+class SidePanel(Container):
+    """Side panel with pad details and message log."""
+
+    DEFAULT_CSS = """
+    SidePanel {
+        width: 28;
+        height: 100%;
+        border-left: solid $primary-darken-2;
+        background: $surface;
+    }
+
+    SidePanel > Static#log-header {
+        height: 1;
+        padding: 0 1;
+        background: $primary-darken-1;
+    }
+    """
+
+    def compose(self) -> ComposeResult:
+        yield PadDetails(id="pad-details")
+        yield Static("[bold]MIDI Log[/]", id="log-header")
+        yield MidiLog(id="midi-log")
+
+
+class MainContent(Horizontal):
+    """Main content area with grid and side panel."""
+
+    DEFAULT_CSS = """
+    MainContent {
+        height: 1fr;
+        width: 100%;
     }
     """
 
@@ -736,19 +904,21 @@ class GridScreen(Screen):
 
     def compose(self) -> ComposeResult:
         yield StatusBar(self._make_status())
-        with GridContainer():
-            for row_idx, row in enumerate(KEY_ROWS):
-                pad_row = []
-                with PadRow():
-                    for col_idx, key in enumerate(row):
-                        note = self._key_to_note(row_idx, col_idx)
-                        label = KEY_LABELS[row_idx][col_idx]
-                        config = PadConfig(note=note)
-                        pad = PadWidget(label, config, row_idx, col_idx, id=f"pad-{key}")
-                        self._pads[key] = pad
-                        pad_row.append(pad)
-                        yield pad
-                self._pad_grid.append(pad_row)
+        with MainContent():
+            with GridContainer():
+                for row_idx, row in enumerate(KEY_ROWS):
+                    pad_row = []
+                    with PadRow():
+                        for col_idx, key in enumerate(row):
+                            note = self._key_to_note(row_idx, col_idx)
+                            label = KEY_LABELS[row_idx][col_idx]
+                            config = PadConfig(note=note)
+                            pad = PadWidget(label, config, row_idx, col_idx, id=f"pad-{key}")
+                            self._pads[key] = pad
+                            pad_row.append(pad)
+                            yield pad
+                    self._pad_grid.append(pad_row)
+            yield SidePanel()
         yield ControlsFooter()
 
     def _make_status(self) -> str:
@@ -817,15 +987,39 @@ class GridScreen(Screen):
                     pad.refresh()
 
     def _update_selection(self) -> None:
-        """Update pad selection visual state."""
+        """Update pad selection visual state and side panel."""
         for row_idx, row in enumerate(self._pad_grid):
             for col_idx, pad in enumerate(row):
                 pad.selected = (row_idx == self.selected_row and col_idx == self.selected_col)
+
+        # Update side panel
+        self._update_pad_details()
+
+    def _update_pad_details(self) -> None:
+        """Update the pad details panel."""
+        try:
+            details = self.query_one("#pad-details", PadDetails)
+            if self.selected_row >= 0 and self.selected_col >= 0:
+                pad = self._pad_grid[self.selected_row][self.selected_col]
+                details.set_pad(pad)
+            else:
+                details.set_pad(None)
+        except Exception:
+            pass
+
+    def _log_midi(self, message: str, key_label: str = "") -> None:
+        """Log a MIDI message to the side panel."""
+        try:
+            log = self.query_one("#midi-log", MidiLog)
+            log.add_message(message, key_label)
+        except Exception:
+            pass
 
     def watch_octave(self, octave: int) -> None:
         """React to octave changes."""
         self._update_pad_notes()
         self._update_status()
+        self._update_pad_details()
 
     def watch_midi_output(self, output: str) -> None:
         """React to MIDI output changes."""
@@ -897,19 +1091,24 @@ class GridScreen(Screen):
         pad.pressed = True
 
         if cfg.msg_type == "note":
-            self.midi.note_on(cfg.note, velocity if cfg.velocity == 100 else cfg.velocity)
+            actual_vel = velocity if cfg.velocity == 100 else cfg.velocity
+            self.midi.note_on(cfg.note, actual_vel)
+            self._log_midi(f"Note On {note_to_name(cfg.note)} vel={actual_vel}", pad.key_label)
             self.set_timer(0.1, lambda p=pad: self._note_off(p))
         elif cfg.msg_type == "cc":
             self.midi.cc(cfg.cc_number, cfg.cc_value)
+            self._log_midi(f"CC {cfg.cc_number} = {cfg.cc_value}", pad.key_label)
             self.set_timer(0.1, lambda p=pad: self._pad_off(p))
         elif cfg.msg_type == "pc":
             self.midi.pc(cfg.pc_number)
+            self._log_midi(f"PC {cfg.pc_number}", pad.key_label)
             self.set_timer(0.1, lambda p=pad: self._pad_off(p))
 
     def _note_off(self, pad: PadWidget) -> None:
         """Send note off and update pad state."""
         pad.pressed = False
         self.midi.note_off(pad.config.note)
+        self._log_midi(f"Note Off {note_to_name(pad.config.note)}", pad.key_label)
 
     def _pad_off(self, pad: PadWidget) -> None:
         """Update pad visual state (for CC/PC which don't need note off)."""

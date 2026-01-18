@@ -908,7 +908,7 @@ class GridScreen(Screen):
         self.midi = midi_engine
         self._pads: dict[str, PadWidget] = {}
         self._pad_grid: list[list[PadWidget]] = []  # 2D grid for navigation
-        self._held_keys: set[str] = set()  # Track currently held keys for note release
+        self._held_keys: dict[str, object] = {}  # key -> timer for release detection
 
     def compose(self) -> ComposeResult:
         yield StatusBar(self._make_status())
@@ -1052,9 +1052,7 @@ class GridScreen(Screen):
         self._update_status()
 
     def on_key(self, event) -> None:
-        """Handle key press/release for grid pads."""
-        from textual.events import Key
-
+        """Handle key press for grid pads with hold detection."""
         key = event.key
 
         # Check for modifier keys in key string
@@ -1089,33 +1087,32 @@ class GridScreen(Screen):
 
         pad = self._pads[grid_key]
 
-        # Check if this is a key release event (Kitty keyboard protocol)
-        # key_type: 0=press, 1=repeat, 2=release
-        is_release = getattr(event, "key_type", None) == 2
+        # Check if key is already held (this is a repeat)
+        if grid_key in self._held_keys:
+            # Cancel existing release timer and restart it
+            existing_timer = self._held_keys[grid_key]
+            if existing_timer:
+                existing_timer.stop()
+            # Set new timer for release detection
+            self._held_keys[grid_key] = self.set_timer(
+                0.15, lambda k=grid_key, p=pad: self._key_release_timeout(k, p)
+            )
+            return
 
-        if is_release:
-            # Key released - send note off
-            if grid_key in self._held_keys:
-                self._held_keys.discard(grid_key)
-                self._release_pad(pad)
-        else:
-            # Key pressed (or repeat)
-            is_repeat = getattr(event, "key_type", None) == 1
+        # New key press - determine velocity and press pad
+        velocity = 40 if has_shift else 100
+        self._press_pad(pad, velocity)
 
-            if is_repeat:
-                # Ignore repeats - note is already playing
-                return
+        # Start release detection timer
+        self._held_keys[grid_key] = self.set_timer(
+            0.15, lambda k=grid_key, p=pad: self._key_release_timeout(k, p)
+        )
 
-            if grid_key in self._held_keys:
-                # Already held, ignore
-                return
-
-            # Determine velocity based on modifiers
-            velocity = 40 if has_shift else 100
-
-            # Press the pad
-            self._held_keys.add(grid_key)
-            self._press_pad(pad, velocity)
+    def _key_release_timeout(self, grid_key: str, pad: PadWidget) -> None:
+        """Called when key repeat stops - key was released."""
+        if grid_key in self._held_keys:
+            del self._held_keys[grid_key]
+            self._release_pad(pad)
 
     def _press_pad(self, pad: PadWidget, velocity: int = 100) -> None:
         """Handle pad press - send note on / CC / PC."""

@@ -166,6 +166,58 @@ def analyze(
     analyze_patches(db, console, patch_number=patch)
 
 
+@app.command()
+def sync(
+    source: Path = typer.Argument(
+        DEFAULT_SOURCE,
+        help="Source directory containing RC-300 WAV files.",
+        exists=False,
+    ),
+    db_path: Path = typer.Option(
+        DEFAULT_DB_PATH,
+        "--db",
+        help="Path to the SQLite database.",
+    ),
+    wav_dir: Path = typer.Option(
+        DEFAULT_WAV_DIR,
+        "--wav-dir",
+        help="Directory to store managed WAV files.",
+    ),
+    mp3_dir: Path = typer.Option(
+        DEFAULT_MP3_DIR,
+        "--mp3-dir",
+        help="Directory to store converted MP3 files.",
+    ),
+) -> None:
+    """Import, convert, and analyze in one step.
+
+    Runs import + convert + analyze in sequence. Already-processed
+    patches and tracks are skipped automatically.
+    """
+    from loopcat.importer import import_from_source
+    from loopcat.converter import convert_tracks
+    from loopcat.analyzer import analyze_patches
+
+    db = Database(db_path)
+
+    # Step 1: Import (if source exists)
+    if source.exists():
+        console.print("[bold]Step 1/3: Import[/bold]")
+        import_from_source(source, db, wav_dir, console)
+        console.print()
+    else:
+        console.print(f"[dim]Step 1/3: Import skipped (source not found: {source})[/dim]\n")
+
+    # Step 2: Convert
+    console.print("[bold]Step 2/3: Convert[/bold]")
+    convert_tracks(db, mp3_dir, console)
+    console.print()
+
+    # Step 3: Analyze
+    console.print("[bold]Step 3/3: Analyze[/bold]")
+    analyze_patches(db, console)
+
+
 @app.command("list")
 @app.command("ls", hidden=True)
 def list_patches(

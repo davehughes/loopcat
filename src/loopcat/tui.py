@@ -55,8 +55,9 @@ class TrackWidget(Static):
         pct = int((self._position / self._duration * 100) if self._duration > 0 else 0)
         bar = "█" * (pct // 5) + "░" * (20 - pct // 5)
         time_str = f"{self._position:.1f}s / {self._duration:.1f}s"
+        bar_color = "cyan" if self._playing else "dim"
 
-        self.update(f"{header}  {status}\n[cyan]{bar}[/] {time_str}")
+        self.update(f"{header}  {status}\n[{bar_color}]{bar}[/] {time_str}")
 
     def update_state(self, position: float, duration: float, playing: bool) -> None:
         """Update the track display state."""

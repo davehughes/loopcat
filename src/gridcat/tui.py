@@ -908,6 +908,7 @@ class GridScreen(Screen):
         self.midi = midi_engine
         self._pads: dict[str, PadWidget] = {}
         self._pad_grid: list[list[PadWidget]] = []  # 2D grid for navigation
+        self._held_keys: set[str] = set()  # Track currently held keys for note release
 
     def compose(self) -> ComposeResult:
         yield StatusBar(self._make_status())
@@ -1051,7 +1052,9 @@ class GridScreen(Screen):
         self._update_status()
 
     def on_key(self, event) -> None:
-        """Handle key press for grid pads (trigger mode)."""
+        """Handle key press/release for grid pads."""
+        from textual.events import Key
+
         key = event.key
 
         # Check for modifier keys in key string
@@ -1081,19 +1084,41 @@ class GridScreen(Screen):
         if grid_key is None:
             return
 
-        # Determine velocity based on modifiers
-        if has_shift:
-            velocity = 40  # Soft
+        if grid_key not in self._pads:
+            return
+
+        pad = self._pads[grid_key]
+
+        # Check if this is a key release event (Kitty keyboard protocol)
+        # key_type: 0=press, 1=repeat, 2=release
+        is_release = getattr(event, "key_type", None) == 2
+
+        if is_release:
+            # Key released - send note off
+            if grid_key in self._held_keys:
+                self._held_keys.discard(grid_key)
+                self._release_pad(pad)
         else:
-            velocity = 100  # Normal
+            # Key pressed (or repeat)
+            is_repeat = getattr(event, "key_type", None) == 1
 
-        # Trigger the pad
-        if grid_key in self._pads:
-            pad = self._pads[grid_key]
-            self._trigger_pad(pad, velocity)
+            if is_repeat:
+                # Ignore repeats - note is already playing
+                return
 
-    def _trigger_pad(self, pad: PadWidget, velocity: int = 100) -> None:
-        """Trigger a pad based on its configuration."""
+            if grid_key in self._held_keys:
+                # Already held, ignore
+                return
+
+            # Determine velocity based on modifiers
+            velocity = 40 if has_shift else 100
+
+            # Press the pad
+            self._held_keys.add(grid_key)
+            self._press_pad(pad, velocity)
+
+    def _press_pad(self, pad: PadWidget, velocity: int = 100) -> None:
+        """Handle pad press - send note on / CC / PC."""
         cfg = pad.config
         pad.pressed = True
 
@@ -1101,25 +1126,21 @@ class GridScreen(Screen):
             actual_vel = velocity if cfg.velocity == 100 else cfg.velocity
             self.midi.note_on(cfg.note, actual_vel)
             self._log_midi(f"Note On {note_to_name(cfg.note)} vel={actual_vel}", pad.key_label)
-            self.set_timer(0.1, lambda p=pad: self._note_off(p))
         elif cfg.msg_type == "cc":
             self.midi.cc(cfg.cc_number, cfg.cc_value)
             self._log_midi(f"CC {cfg.cc_number} = {cfg.cc_value}", pad.key_label)
-            self.set_timer(0.1, lambda p=pad: self._pad_off(p))
         elif cfg.msg_type == "pc":
             self.midi.pc(cfg.pc_number)
             self._log_midi(f"PC {cfg.pc_number}", pad.key_label)
-            self.set_timer(0.1, lambda p=pad: self._pad_off(p))
 
-    def _note_off(self, pad: PadWidget) -> None:
-        """Send note off and update pad state."""
+    def _release_pad(self, pad: PadWidget) -> None:
+        """Handle pad release - send note off if needed."""
+        cfg = pad.config
         pad.pressed = False
-        self.midi.note_off(pad.config.note)
-        self._log_midi(f"Note Off {note_to_name(pad.config.note)}", pad.key_label)
 
-    def _pad_off(self, pad: PadWidget) -> None:
-        """Update pad visual state (for CC/PC which don't need note off)."""
-        pad.pressed = False
+        if cfg.msg_type == "note":
+            self.midi.note_off(cfg.note)
+            self._log_midi(f"Note Off {note_to_name(cfg.note)}", pad.key_label)
 
     def action_octave_up(self) -> None:
         """Increase octave."""

@@ -712,7 +712,9 @@ class GridScreen(Screen):
         Binding("colon", "command_palette", "Commands"),
         Binding("question_mark", "show_help", "Help"),
         Binding("escape", "deselect_or_quit", "Quit"),
+        # Ctrl+H sends backspace in most terminals, so bind both
         Binding("ctrl+h", "select_left", "Select Left", show=False),
+        Binding("backspace", "select_left", "Select Left", show=False),
         Binding("ctrl+j", "select_down", "Select Down", show=False),
         Binding("ctrl+k", "select_up", "Select Up", show=False),
         Binding("ctrl+l", "select_right", "Select Right", show=False),
@@ -924,37 +926,37 @@ class GridScreen(Screen):
             self.octave -= 1
 
     def action_select_left(self) -> None:
-        """Move selection left."""
+        """Move selection left (wraps around)."""
         if self.selected_row < 0:
             # No selection, start at top-left
             self.selected_row = 0
             self.selected_col = 0
-        elif self.selected_col > 0:
-            self.selected_col -= 1
+        else:
+            self.selected_col = (self.selected_col - 1) % 8
 
     def action_select_right(self) -> None:
-        """Move selection right."""
+        """Move selection right (wraps around)."""
         if self.selected_row < 0:
             self.selected_row = 0
             self.selected_col = 0
-        elif self.selected_col < 7:
-            self.selected_col += 1
+        else:
+            self.selected_col = (self.selected_col + 1) % 8
 
     def action_select_up(self) -> None:
-        """Move selection up."""
+        """Move selection up (wraps around)."""
         if self.selected_row < 0:
             self.selected_row = 0
             self.selected_col = 0
-        elif self.selected_row > 0:
-            self.selected_row -= 1
+        else:
+            self.selected_row = (self.selected_row - 1) % 4
 
     def action_select_down(self) -> None:
-        """Move selection down."""
+        """Move selection down (wraps around)."""
         if self.selected_row < 0:
             self.selected_row = 0
             self.selected_col = 0
-        elif self.selected_row < 3:
-            self.selected_row += 1
+        else:
+            self.selected_row = (self.selected_row + 1) % 4
 
     def action_deselect_or_quit(self) -> None:
         """Deselect pad if selected, otherwise quit."""

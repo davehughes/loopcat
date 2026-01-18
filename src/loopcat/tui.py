@@ -112,10 +112,24 @@ class ControlsFooter(Static):
 
 # Built-in Textual themes + base16 themes (deduplicated)
 BUILTIN_THEMES = [
-    "textual-dark", "textual-light", "nord", "gruvbox", "dracula",
-    "tokyo-night", "monokai", "catppuccin-mocha", "catppuccin-latte",
-    "solarized-dark", "solarized-light", "rose-pine", "rose-pine-moon",
-    "rose-pine-dawn", "atom-one-dark", "atom-one-light", "flexoki", "textual-ansi",
+    "textual-dark",
+    "textual-light",
+    "nord",
+    "gruvbox",
+    "dracula",
+    "tokyo-night",
+    "monokai",
+    "catppuccin-mocha",
+    "catppuccin-latte",
+    "solarized-dark",
+    "solarized-light",
+    "rose-pine",
+    "rose-pine-moon",
+    "rose-pine-dawn",
+    "atom-one-dark",
+    "atom-one-light",
+    "flexoki",
+    "textual-ansi",
 ]
 _builtin_set = set(BUILTIN_THEMES)
 THEMES = BUILTIN_THEMES + [t.name for t in BASE16_THEMES if t.name not in _builtin_set]
@@ -161,6 +175,8 @@ class ThemePickerScreen(ModalScreen[str | None]):
         Binding("ctrl+j", "cursor_down", show=False),
         Binding("ctrl+k", "cursor_up", show=False, priority=True),
         Binding("ctrl+n", "cursor_down", show=False),
+        Binding("ctrl+d", "page_down", show=False, priority=True),
+        Binding("ctrl+u", "page_up", show=False, priority=True),
     ]
 
     def __init__(self, current_theme: str) -> None:
@@ -222,6 +238,14 @@ class ThemePickerScreen(ModalScreen[str | None]):
         """Move cursor up in the option list."""
         self._move_highlight(-1)
 
+    def action_page_down(self) -> None:
+        """Move cursor down by 10 in the option list."""
+        self._move_highlight(10)
+
+    def action_page_up(self) -> None:
+        """Move cursor up by 10 in the option list."""
+        self._move_highlight(-10)
+
     def action_cancel(self) -> None:
         """Cancel and restore original theme."""
         self.app.theme = self.current_theme
@@ -282,6 +306,8 @@ class PatchPickerScreen(Screen):
         Binding("ctrl+j", "cursor_down", show=False),
         Binding("ctrl+k", "cursor_up", show=False, priority=True),
         Binding("ctrl+n", "cursor_down", show=False),
+        Binding("ctrl+d", "page_down", show=False, priority=True),
+        Binding("ctrl+u", "page_up", show=False, priority=True),
         Binding("t", "cycle_theme", show=False),
     ]
 
@@ -293,12 +319,14 @@ class PatchPickerScreen(Screen):
         self._filtered_patches = patches.copy()
 
     def compose(self) -> ComposeResult:
-        yield Static("[bold]LOOPCAT[/] │ Select a patch to play", id="picker-header")
+        yield Static("🐱[bold] loopcat[/] │ Select a patch to play", id="picker-header")
+
         with VerticalScroll(id="picker-container"):
             yield Input(placeholder="Type to filter patches...", id="patch-search")
             yield OptionList(*self._build_options(), id="patch-list")
         yield ControlsFooter(
-            "[bold]C-j[/] [bold]↑[/] [bold]↓[/] [bold]C-k[/] [dim]navigate[/]  "
+            "[bold]C-j[/] [bold]↓[/] [bold]↑[/] [bold]C-k[/] [dim]navigate[/]  "
+            "[bold]C-d[/] [bold]C-u[/] [dim]fast[/]  "
             "[bold]enter[/] [dim]play[/]  "
             "[bold]t[/] [dim]theme[/]  "
             "[bold]esc[/] [dim]quit[/]"
@@ -332,7 +360,8 @@ class PatchPickerScreen(Screen):
         option_list.clear_options()
 
         self._filtered_patches = [
-            p for p in self.patches
+            p
+            for p in self.patches
             if self.filter_text in (p.analysis.suggested_name if p.analysis else f"Patch #{p.catalog_number}").lower()
         ]
         option_list.add_options(self._build_options())
@@ -355,6 +384,12 @@ class PatchPickerScreen(Screen):
 
     def action_cursor_up(self) -> None:
         self._move_highlight(-1)
+
+    def action_page_down(self) -> None:
+        self._move_highlight(10)
+
+    def action_page_up(self) -> None:
+        self._move_highlight(-10)
 
     def action_quit(self) -> None:
         self.app.exit()
@@ -453,7 +488,9 @@ class PlayerScreen(Screen):
 
     def compose(self) -> ComposeResult:
         # Header (single line)
-        patch_name = self.patch.analysis.suggested_name if self.patch.analysis else f"Patch #{self.patch.catalog_number}"
+        patch_name = (
+            self.patch.analysis.suggested_name if self.patch.analysis else f"Patch #{self.patch.catalog_number}"
+        )
         bpm_str = f" {self.patch.tracks[0].bpm:.0f}bpm" if self.patch.tracks and self.patch.tracks[0].bpm else ""
         yield Static(
             f"[bold]LOOPCAT[/] │ {patch_name} (#{self.patch.catalog_number}){bpm_str}",
@@ -484,10 +521,9 @@ class PlayerScreen(Screen):
                 self.player.load_track(track.track_number, wav_path)
 
         # Set initial progress bar state (use longest track duration)
-        max_duration = max(
-            (self.player.get_track_info(t.track_number) or (0, 0, False))[1]
-            for t in self.patch.tracks
-        ) or 1.0
+        max_duration = (
+            max((self.player.get_track_info(t.track_number) or (0, 0, False))[1] for t in self.patch.tracks) or 1.0
+        )
         if self.progress_bar:
             self.progress_bar.update_state(0.0, max_duration, True)
 
@@ -529,10 +565,7 @@ class PlayerScreen(Screen):
         if self.progress_bar:
             if not any_playing:
                 # When stopped, show the longest track's duration
-                max_duration = max(
-                    (dur for _, dur, _ in positions.values()),
-                    default=1.0
-                )
+                max_duration = max((dur for _, dur, _ in positions.values()), default=1.0)
                 current_position = 0.0
             self.progress_bar.update_state(current_position, max_duration, any_playing)
 

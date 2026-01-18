@@ -46,6 +46,24 @@ KEY_LABELS = [
 # Note names for display
 NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
 
+# Piano keyboard layout - maps computer keys to semitone offsets from C
+# White keys (bottom row): C D E F G A B C D E F G A B C
+PIANO_WHITE_KEYS = ["a", "s", "d", "f", "g", "h", "j", "k", "l", "semicolon", "apostrophe"]
+PIANO_WHITE_OFFSETS = [0, 2, 4, 5, 7, 9, 11, 12, 14, 16, 17]  # Semitones from C
+PIANO_WHITE_LABELS = ["A", "S", "D", "F", "G", "H", "J", "K", "L", ";", "'"]
+
+# Black keys (top row): C# D# F# G# A# C# D# F# G# A#
+PIANO_BLACK_KEYS = ["w", "e", "t", "y", "u", "o", "p"]
+PIANO_BLACK_OFFSETS = [1, 3, 6, 8, 10, 13, 15]  # Semitones from C
+PIANO_BLACK_LABELS = ["W", "E", "T", "Y", "U", "O", "P"]
+
+# Combined for easy lookup
+PIANO_KEY_MAP = {}
+for i, key in enumerate(PIANO_WHITE_KEYS):
+    PIANO_KEY_MAP[key] = ("white", PIANO_WHITE_OFFSETS[i], PIANO_WHITE_LABELS[i])
+for i, key in enumerate(PIANO_BLACK_KEYS):
+    PIANO_KEY_MAP[key] = ("black", PIANO_BLACK_OFFSETS[i], PIANO_BLACK_LABELS[i])
+
 
 def note_to_name(note: int) -> str:
     """Convert MIDI note number to note name.
@@ -174,6 +192,123 @@ class GridContainer(Container):
         height: auto;
         width: auto;
         padding: 1;
+    }
+    """
+
+
+class PadRow(Horizontal):
+    """A row of pads."""
+
+    DEFAULT_CSS = """
+    PadRow {
+        height: auto;
+        width: auto;
+        margin-bottom: 1;
+    }
+    """
+
+
+class PianoKey(Static):
+    """A single piano key (white or black)."""
+
+    DEFAULT_CSS = """
+    PianoKey {
+        content-align: center bottom;
+        text-align: center;
+    }
+
+    PianoKey.white {
+        width: 6;
+        height: 6;
+        background: $surface-lighten-3;
+        border: solid $surface-darken-2;
+        color: $text;
+    }
+
+    PianoKey.black {
+        width: 4;
+        height: 4;
+        background: $surface-darken-3;
+        border: solid $surface-darken-1;
+        color: $text;
+        margin-left: -2;
+        margin-right: -2;
+    }
+
+    PianoKey.white.pressed {
+        background: $primary;
+    }
+
+    PianoKey.black.pressed {
+        background: $primary-darken-2;
+    }
+    """
+
+    pressed: reactive[bool] = reactive(False)
+
+    def __init__(
+        self, key_label: str, note: int, is_black: bool = False, **kwargs
+    ) -> None:
+        super().__init__(**kwargs)
+        self.key_label = key_label
+        self.note = note
+        self.is_black = is_black
+        if is_black:
+            self.add_class("black")
+        else:
+            self.add_class("white")
+
+    def render(self) -> str:
+        note_name = note_to_name(self.note)
+        return f"{note_name}\n[dim]{self.key_label}[/]"
+
+    def watch_pressed(self, pressed: bool) -> None:
+        if pressed:
+            self.add_class("pressed")
+        else:
+            self.remove_class("pressed")
+
+
+class KeyboardContainer(Container):
+    """Container for the piano keyboard layout."""
+
+    DEFAULT_CSS = """
+    KeyboardContainer {
+        height: auto;
+        width: auto;
+        padding: 1;
+        align: center middle;
+    }
+    """
+
+
+class BlackKeyRow(Horizontal):
+    """Row for black keys with spacing."""
+
+    DEFAULT_CSS = """
+    BlackKeyRow {
+        height: 4;
+        width: auto;
+        padding-left: 4;
+    }
+
+    BlackKeyRow .spacer {
+        width: 4;
+    }
+
+    BlackKeyRow .wide-spacer {
+        width: 8;
+    }
+    """
+
+
+class WhiteKeyRow(Horizontal):
+    """Row for white keys."""
+
+    DEFAULT_CSS = """
+    WhiteKeyRow {
+        height: auto;
+        width: auto;
     }
     """
 
@@ -414,9 +549,8 @@ class HelpScreen(HelpScreenBase):
 [dim]?[/]                   Show this help"""
 
 
-# Command palette commands
-COMMANDS = [
-    ("edit", "Edit selected pad"),
+# Command palette commands (dynamically filtered based on current view)
+COMMANDS_COMMON = [
     ("output", "Select MIDI output"),
     ("channel", "Select MIDI channel (1-16)"),
     ("settings", "Note play mode & timing"),
@@ -424,6 +558,18 @@ COMMANDS = [
     ("help", "Show keyboard shortcuts"),
     ("quit", "Exit gridcat"),
 ]
+
+COMMANDS_GRID = [
+    ("keyboard", "Switch to keyboard view"),
+    ("edit", "Edit selected pad"),
+] + COMMANDS_COMMON
+
+COMMANDS_KEYBOARD = [
+    ("grid", "Switch to grid view"),
+] + COMMANDS_COMMON
+
+# Default for command palette (will be overridden by screen)
+COMMANDS = COMMANDS_GRID
 
 
 class CommandPalette(ModalScreen[str | None]):
@@ -474,9 +620,10 @@ class CommandPalette(ModalScreen[str | None]):
         Binding("ctrl+p", "cursor_up", show=False),
     ]
 
-    def __init__(self) -> None:
+    def __init__(self, commands: list[tuple[str, str]] | None = None) -> None:
         super().__init__()
         self.filter_text = ""
+        self.commands = commands if commands is not None else COMMANDS
 
     def compose(self) -> ComposeResult:
         from textual.widgets import Input
@@ -485,7 +632,7 @@ class CommandPalette(ModalScreen[str | None]):
             yield Static("Commands", id="palette-title")
             yield Input(placeholder="Type to filter...", id="palette-input")
             yield OptionList(
-                *[Option(f"{cmd}  [dim]{desc}[/]", id=cmd) for cmd, desc in COMMANDS],
+                *[Option(f"{cmd}  [dim]{desc}[/]", id=cmd) for cmd, desc in self.commands],
                 id="palette-list",
             )
             yield Static("[dim]↑↓[/] navigate  [dim]enter[/] run  [dim]esc[/] cancel", id="palette-hint")
@@ -503,7 +650,7 @@ class CommandPalette(ModalScreen[str | None]):
         option_list = self.query_one("#palette-list", OptionList)
         option_list.clear_options()
 
-        filtered = [(cmd, desc) for cmd, desc in COMMANDS if self.filter_text in cmd.lower()]
+        filtered = [(cmd, desc) for cmd, desc in self.commands if self.filter_text in cmd.lower()]
         option_list.add_options([Option(f"{cmd}  [dim]{desc}[/]", id=cmd) for cmd, desc in filtered])
 
         if filtered:
@@ -1427,7 +1574,9 @@ class GridScreen(Screen):
         """Open command palette."""
 
         def handle_command(command: str | None) -> None:
-            if command == "edit":
+            if command == "keyboard":
+                self.app.action_switch_to_keyboard()
+            elif command == "edit":
                 self.action_edit_pad()
             elif command == "output":
                 self.action_select_output()
@@ -1442,7 +1591,7 @@ class GridScreen(Screen):
             elif command == "quit":
                 self.action_quit()
 
-        self.app.push_screen(CommandPalette(), handle_command)
+        self.app.push_screen(CommandPalette(COMMANDS_GRID), handle_command)
 
     def action_settings(self) -> None:
         """Open settings dialog."""
@@ -1464,6 +1613,318 @@ class GridScreen(Screen):
         self.app.exit()
 
 
+class KeyboardScreen(Screen):
+    """Piano keyboard view screen."""
+
+    BINDINGS = [
+        Binding("up", "octave_up", "Octave Up"),
+        Binding("down", "octave_down", "Octave Down"),
+        Binding("bracketright", "octave_up", "Octave Up", show=False),
+        Binding("bracketleft", "octave_down", "Octave Down", show=False),
+        Binding("colon", "command_palette", "Commands"),
+        Binding("question_mark", "show_help", "Help"),
+        Binding("escape", "quit", "Quit"),
+    ]
+
+    octave: reactive[int] = reactive(3)
+    midi_output: reactive[str] = reactive("")
+    midi_channel: reactive[int] = reactive(0)
+    is_virtual_port: reactive[bool] = reactive(False)
+
+    def __init__(self, midi_engine: MidiEngine) -> None:
+        super().__init__()
+        self.midi = midi_engine
+        self._keys: dict[str, PianoKey] = {}
+        self._held_keys: dict[str, object] = {}
+
+    def compose(self) -> ComposeResult:
+        yield StatusBar(self._make_status())
+        with MainContent():
+            with KeyboardContainer():
+                # Black keys row (with spacers for proper positioning)
+                with BlackKeyRow():
+                    # C# D# [gap] F# G# A# [gap] C# D#
+                    for i, (key, offset, label) in enumerate(zip(
+                        PIANO_BLACK_KEYS, PIANO_BLACK_OFFSETS, PIANO_BLACK_LABELS
+                    )):
+                        # Add spacer before F# (index 2) and before second C# (index 5)
+                        if i == 2 or i == 5:
+                            yield Static("", classes="wide-spacer")
+                        note = self._offset_to_note(offset)
+                        piano_key = PianoKey(label, note, is_black=True, id=f"key-{key}")
+                        self._keys[key] = piano_key
+                        yield piano_key
+
+                # White keys row
+                with WhiteKeyRow():
+                    for key, offset, label in zip(
+                        PIANO_WHITE_KEYS, PIANO_WHITE_OFFSETS, PIANO_WHITE_LABELS
+                    ):
+                        note = self._offset_to_note(offset)
+                        piano_key = PianoKey(label, note, is_black=False, id=f"key-{key}")
+                        self._keys[key] = piano_key
+                        yield piano_key
+
+            yield SidePanel()
+        yield KeyboardFooter()
+
+    def _make_status(self) -> str:
+        """Generate status bar content."""
+        if self.midi_output:
+            if self.is_virtual_port:
+                output = f"[bold]{self.midi_output}[/] (virtual)"
+            else:
+                output = self.midi_output
+        else:
+            output = "[dim]None[/]"
+
+        return (
+            f"[bold]GRIDCAT[/] [dim]keyboard[/]  │  "
+            f"Oct: {self.octave}  │  "
+            f"Ch: {self.midi_channel + 1}  │  "
+            f"Out: {output}"
+        )
+
+    def _update_status(self) -> None:
+        try:
+            status = self.query_one(StatusBar)
+            status.update(self._make_status())
+        except Exception:
+            pass
+
+    def _offset_to_note(self, offset: int) -> int:
+        """Convert semitone offset to MIDI note."""
+        return (self.octave + 1) * 12 + offset
+
+    def _update_key_notes(self) -> None:
+        """Update all key notes after octave change."""
+        for key, (_, offset, _) in PIANO_KEY_MAP.items():
+            if key in self._keys:
+                self._keys[key].note = self._offset_to_note(offset)
+                self._keys[key].refresh()
+
+    def _log_midi(self, message: str, key_label: str = "") -> None:
+        """Log a MIDI message to the side panel."""
+        try:
+            log = self.query_one("#midi-log", MidiLog)
+            log.add_message(message, key_label)
+        except Exception:
+            pass
+
+    def watch_octave(self, octave: int) -> None:
+        self._update_key_notes()
+        self._update_status()
+
+    def watch_midi_output(self, output: str) -> None:
+        self._update_status()
+
+    def watch_midi_channel(self, channel: int) -> None:
+        self._update_status()
+
+    def watch_is_virtual_port(self, is_virtual: bool) -> None:
+        self._update_status()
+
+    def on_key(self, event) -> None:
+        """Handle key press for piano keys."""
+        key = event.key
+
+        has_shift = key.startswith("shift+")
+        has_ctrl = key.startswith("ctrl+")
+
+        if has_ctrl:
+            return
+
+        base_key = key
+        if has_shift:
+            base_key = key[6:]
+
+        # Normalize special keys
+        if base_key == ";":
+            base_key = "semicolon"
+        elif base_key == "'":
+            base_key = "apostrophe"
+
+        if base_key not in PIANO_KEY_MAP:
+            return
+
+        if base_key not in self._keys:
+            return
+
+        piano_key = self._keys[base_key]
+        settings = get_settings()
+
+        if settings.play_mode == "trigger":
+            if base_key in self._held_keys:
+                return
+
+            velocity = 40 if has_shift else 100
+            self._press_key(piano_key, velocity)
+            self._held_keys[base_key] = True
+
+            duration = settings.trigger_duration_ms / 1000.0
+            self.set_timer(
+                duration,
+                lambda k=base_key, p=piano_key: self._trigger_release(k, p),
+            )
+        else:
+            initial_delay = settings.hold_initial_delay_ms / 1000.0
+            repeat_delay = settings.hold_repeat_delay_ms / 1000.0
+
+            if base_key in self._held_keys:
+                existing_timer = self._held_keys[base_key]
+                if existing_timer and hasattr(existing_timer, "stop"):
+                    existing_timer.stop()
+                self._held_keys[base_key] = self.set_timer(
+                    repeat_delay,
+                    lambda k=base_key, p=piano_key: self._key_release_timeout(k, p),
+                )
+                return
+
+            velocity = 40 if has_shift else 100
+            self._press_key(piano_key, velocity)
+
+            self._held_keys[base_key] = self.set_timer(
+                initial_delay,
+                lambda k=base_key, p=piano_key: self._key_release_timeout(k, p),
+            )
+
+    def _press_key(self, piano_key: PianoKey, velocity: int = 100) -> None:
+        """Send note on for a piano key."""
+        piano_key.pressed = True
+        self.midi.note_on(piano_key.note, velocity)
+        self._log_midi(f"Note On {note_to_name(piano_key.note)} vel={velocity}", piano_key.key_label)
+
+    def _release_key(self, piano_key: PianoKey) -> None:
+        """Send note off for a piano key."""
+        piano_key.pressed = False
+        self.midi.note_off(piano_key.note)
+        self._log_midi(f"Note Off {note_to_name(piano_key.note)}", piano_key.key_label)
+
+    def _trigger_release(self, base_key: str, piano_key: PianoKey) -> None:
+        if base_key in self._held_keys:
+            del self._held_keys[base_key]
+            self._release_key(piano_key)
+
+    def _key_release_timeout(self, base_key: str, piano_key: PianoKey) -> None:
+        if base_key in self._held_keys:
+            del self._held_keys[base_key]
+            self._release_key(piano_key)
+
+    def action_octave_up(self) -> None:
+        if self.octave < 8:
+            self.octave += 1
+
+    def action_octave_down(self) -> None:
+        if self.octave > -1:
+            self.octave -= 1
+
+    def action_select_output(self) -> None:
+        outputs = self.midi.list_outputs()
+
+        def handle_output(result: tuple[str, bool] | None) -> None:
+            if result:
+                port_name, is_virtual = result
+                if is_virtual:
+                    if self.midi.open_virtual(port_name):
+                        self.midi_output = port_name
+                        self.is_virtual_port = True
+                else:
+                    if self.midi.connect(port_name):
+                        self.midi_output = port_name
+                        self.is_virtual_port = False
+
+        self.app.push_screen(
+            OutputPickerScreen(outputs, self.midi_output or None, self.is_virtual_port),
+            handle_output,
+        )
+
+    def action_select_channel(self) -> None:
+        def handle_channel(channel: int | None) -> None:
+            if channel is not None:
+                self.midi.set_channel(channel)
+                self.midi_channel = channel
+
+        self.app.push_screen(ChannelPickerScreen(self.midi_channel), handle_channel)
+
+    def action_select_theme(self) -> None:
+        config_path = get_config_path("gridcat")
+
+        def handle_theme(theme: str | None) -> None:
+            if theme:
+                self.app.theme = theme
+                set_theme(theme, config_path)
+
+        self.app.push_screen(ThemePickerScreen(self.app.theme), handle_theme)
+
+    def action_settings(self) -> None:
+        current_settings = get_settings()
+
+        def handle_settings(new_settings: GridcatSettings | None) -> None:
+            if new_settings:
+                save_settings(new_settings)
+
+        self.app.push_screen(SettingsScreen(current_settings), handle_settings)
+
+    def action_command_palette(self) -> None:
+        def handle_command(command: str | None) -> None:
+            if command == "grid":
+                self.app.action_switch_to_grid()
+            elif command == "output":
+                self.action_select_output()
+            elif command == "channel":
+                self.action_select_channel()
+            elif command == "settings":
+                self.action_settings()
+            elif command == "theme":
+                self.action_select_theme()
+            elif command == "help":
+                self.action_show_help()
+            elif command == "quit":
+                self.action_quit()
+
+        self.app.push_screen(CommandPalette(COMMANDS_KEYBOARD), handle_command)
+
+    def action_show_help(self) -> None:
+        self.app.push_screen(KeyboardHelpScreen())
+
+    def action_quit(self) -> None:
+        self.midi.all_notes_off()
+        self.app.exit()
+
+
+class KeyboardFooter(ControlsFooterBase):
+    """Footer for keyboard view."""
+
+    def __init__(self) -> None:
+        content = (
+            "[dim]↑↓[/] octave  "
+            "[dim]Shift[/] soft  "
+            "[dim]:[/] commands  "
+            "[dim]?[/] help"
+        )
+        super().__init__(content)
+
+
+class KeyboardHelpScreen(HelpScreenBase):
+    """Help screen for keyboard view."""
+
+    TITLE = "Keyboard Help"
+    HELP_TEXT = """[bold]Piano Keys[/]
+[dim]A S D F G H J K L ; '[/]  White keys (C to F)
+[dim]W E   T Y U   O P[/]     Black keys (C# to D#)
+
+[bold]Modifiers[/]
+[dim]Shift + key[/]         Soft velocity (40)
+
+[bold]Navigation[/]
+[dim]↑ / ][/]               Octave up
+[dim]↓ / [[/]               Octave down
+
+[bold]Commands[/]
+[dim]:[/]                   Open command palette
+[dim]?[/]                   Show this help"""
+
+
 class GridcatApp(App):
     """Gridcat TUI MIDI controller application."""
 
@@ -1480,6 +1941,7 @@ class GridcatApp(App):
     def __init__(self) -> None:
         super().__init__()
         self.midi = MidiEngine()
+        self.current_view = "grid"  # "grid" or "keyboard"
         register_themes(self)
 
     def on_mount(self) -> None:
@@ -1498,12 +1960,38 @@ class GridcatApp(App):
     def _open_virtual_port(self) -> None:
         """Open virtual MIDI port on startup."""
         if self.midi.open_virtual(DEFAULT_PORT_NAME):
-            try:
-                grid_screen = self.query_one(GridScreen)
-                grid_screen.midi_output = DEFAULT_PORT_NAME
-                grid_screen.is_virtual_port = True
-            except Exception:
-                pass
+            self._update_screen_midi_state()
+
+    def _update_screen_midi_state(self) -> None:
+        """Update the current screen's MIDI state."""
+        try:
+            if self.current_view == "grid":
+                screen = self.query_one(GridScreen)
+            else:
+                screen = self.query_one(KeyboardScreen)
+            screen.midi_output = self.midi.port_name
+            screen.is_virtual_port = self.midi.is_virtual
+            screen.midi_channel = self.midi.channel
+        except Exception:
+            pass
+
+    def action_switch_to_keyboard(self) -> None:
+        """Switch to keyboard view."""
+        self.midi.all_notes_off()
+        self.current_view = "keyboard"
+        self.pop_screen()
+        keyboard_screen = KeyboardScreen(self.midi)
+        self.push_screen(keyboard_screen)
+        self.call_after_refresh(self._update_screen_midi_state)
+
+    def action_switch_to_grid(self) -> None:
+        """Switch to grid view."""
+        self.midi.all_notes_off()
+        self.current_view = "grid"
+        self.pop_screen()
+        grid_screen = GridScreen(self.midi)
+        self.push_screen(grid_screen)
+        self.call_after_refresh(self._update_screen_midi_state)
 
     def action_quit(self) -> None:
         """Quit cleanly."""

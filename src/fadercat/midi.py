@@ -5,6 +5,9 @@ from typing import Optional
 import mido
 
 
+DEFAULT_PORT_NAME = "Fadercat"
+
+
 class MidiEngine:
     """MIDI output engine for sending control change messages."""
 
@@ -12,6 +15,8 @@ class MidiEngine:
         """Initialize the MIDI engine."""
         self.output: Optional[mido.ports.BaseOutput] = None
         self.channel: int = 0  # 0-15 (displayed as 1-16)
+        self.port_name: str = ""
+        self.is_virtual: bool = False
 
     def list_outputs(self) -> list[str]:
         """Get list of available MIDI output ports.
@@ -20,6 +25,30 @@ class MidiEngine:
             List of MIDI output port names.
         """
         return mido.get_output_names()
+
+    def open_virtual(self, port_name: str = DEFAULT_PORT_NAME) -> bool:
+        """Open a virtual MIDI output port.
+
+        Creates a virtual port that other applications can connect to.
+
+        Args:
+            port_name: Name for the virtual port.
+
+        Returns:
+            True if port opened successfully, False otherwise.
+        """
+        try:
+            if self.output:
+                self.output.close()
+            self.output = mido.open_output(port_name, virtual=True)
+            self.port_name = port_name
+            self.is_virtual = True
+            return True
+        except (OSError, IOError):
+            self.output = None
+            self.port_name = ""
+            self.is_virtual = False
+            return False
 
     def connect(self, port_name: str) -> bool:
         """Connect to a MIDI output port.
@@ -34,9 +63,12 @@ class MidiEngine:
             if self.output:
                 self.output.close()
             self.output = mido.open_output(port_name)
+            self.port_name = port_name
+            self.is_virtual = False
             return True
         except (OSError, IOError):
             self.output = None
+            self.port_name = ""
             return False
 
     def disconnect(self) -> None:
@@ -44,6 +76,8 @@ class MidiEngine:
         if self.output:
             self.output.close()
             self.output = None
+        self.port_name = ""
+        self.is_virtual = False
 
     def set_channel(self, channel: int) -> None:
         """Set the MIDI channel (0-15).

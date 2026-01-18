@@ -1,8 +1,17 @@
 """Tests for fadercat MIDI fader controller."""
 
 from unittest.mock import MagicMock, patch
+import tempfile
+import os
 
 import pytest
+
+
+# Fixture to isolate config for each test
+@pytest.fixture(autouse=True)
+def isolated_config(tmp_path, monkeypatch):
+    """Use a temporary config directory for each test."""
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
 
 
 class TestMidiEngineCC:
@@ -138,12 +147,15 @@ class TestFaderValueClamp:
                 app = FadercatApp()
                 async with app.run_test() as pilot:
                     await pilot.pause()
+                    await pilot.pause()  # Extra pause for rebuild
 
                     screen = app.screen
                     assert isinstance(screen, FaderScreen)
 
-                    # Get first fader
-                    fader = screen._faders[0]
+                    # Get first fader using accessor
+                    faders = screen._get_active_faders()
+                    assert len(faders) == 8
+                    fader = faders[0]
 
                     # Set to max and try to increase
                     fader.value = 127
@@ -172,8 +184,8 @@ class TestDualKeyControl:
         assert FADER_KEYS_DOWN == ["a", "s", "d", "f", "g", "h", "j", "k"]
 
     @pytest.mark.asyncio
-    async def test_q_increases_fader_1(self):
-        """Q increases fader 1."""
+    async def test_k_increases_selected_fader(self):
+        """K increases the selected fader (vertical mode)."""
         from fadercat.tui import FadercatApp, FaderScreen
 
         with patch("fadercat.midi.mido.get_output_names", return_value=[]):
@@ -181,20 +193,26 @@ class TestDualKeyControl:
                 app = FadercatApp()
                 async with app.run_test() as pilot:
                     await pilot.pause()
+                    await pilot.pause()  # Extra pause for rebuild
 
                     screen = app.screen
                     assert isinstance(screen, FaderScreen)
 
-                    initial_value = screen._faders[0].value
-
-                    await pilot.press("q")
+                    # Select fader 1
+                    await pilot.press("1")
                     await pilot.pause()
 
-                    assert screen._faders[0].value > initial_value
+                    faders = screen._get_active_faders()
+                    initial_value = faders[0].value
+
+                    await pilot.press("k")
+                    await pilot.pause()
+
+                    assert faders[0].value > initial_value
 
     @pytest.mark.asyncio
-    async def test_a_decreases_fader_1(self):
-        """A decreases fader 1."""
+    async def test_j_decreases_selected_fader(self):
+        """J decreases the selected fader (vertical mode)."""
         from fadercat.tui import FadercatApp, FaderScreen
 
         with patch("fadercat.midi.mido.get_output_names", return_value=[]):
@@ -202,17 +220,21 @@ class TestDualKeyControl:
                 app = FadercatApp()
                 async with app.run_test() as pilot:
                     await pilot.pause()
+                    await pilot.pause()  # Extra pause for rebuild
 
                     screen = app.screen
                     assert isinstance(screen, FaderScreen)
 
-                    # Set initial value above 0
-                    screen._faders[0].value = 64
+                    # Select fader 1 and set initial value above 0
+                    await pilot.press("1")
+                    await pilot.pause()
+                    faders = screen._get_active_faders()
+                    faders[0].value = 64
 
-                    await pilot.press("a")
+                    await pilot.press("j")
                     await pilot.pause()
 
-                    assert screen._faders[0].value < 64
+                    assert faders[0].value < 64
 
 
 class TestFadercatApp:
@@ -242,16 +264,19 @@ class TestFadercatApp:
     @pytest.mark.asyncio
     async def test_fadercat_renders_8_faders(self):
         """FadercatApp renders 8 fader widgets."""
-        from fadercat.tui import FadercatApp, FaderWidget
+        from fadercat.tui import FadercatApp, FaderScreen
 
         with patch("fadercat.midi.mido.get_output_names", return_value=[]):
             with patch("fadercat.midi.mido.open_output"):
                 app = FadercatApp()
                 async with app.run_test() as pilot:
                     await pilot.pause()
+                    await pilot.pause()  # Extra pause for rebuild
 
-                    faders = app.screen.query(FaderWidget)
-                    assert len(list(faders)) == 8
+                    screen = app.screen
+                    assert isinstance(screen, FaderScreen)
+                    faders = screen._get_active_faders()
+                    assert len(faders) == 8
 
 
 class TestFaderSelection:
@@ -294,18 +319,21 @@ class TestFaderSelection:
                 app = FadercatApp()
                 async with app.run_test() as pilot:
                     await pilot.pause()
+                    await pilot.pause()  # Extra pause for rebuild
 
                     screen = app.screen
+                    assert isinstance(screen, FaderScreen)
 
                     # Select fader 1 and set value
                     screen.selected_fader = 0
-                    screen._faders[0].value = 100
+                    faders = screen._get_active_faders()
+                    faders[0].value = 100
 
                     # Press space to reset
                     await pilot.press("space")
                     await pilot.pause()
 
-                    assert screen._faders[0].value == 0
+                    assert faders[0].value == 0
 
 
 class TestHelpScreen:
@@ -345,3 +373,168 @@ class TestHelpScreen:
                     await pilot.press("escape")
                     await pilot.pause()
                     assert isinstance(app.screen, FaderScreen)
+
+
+class TestHorizontalMode:
+    """Tests for horizontal display mode."""
+
+    def test_horizontal_fader_widget_creation(self):
+        """HorizontalFaderWidget can be created."""
+        from fadercat.tui import HorizontalFaderWidget
+
+        fader = HorizontalFaderWidget(
+            fader_index=0,
+            cc_number=1,
+            label="Test",
+        )
+        assert fader.fader_index == 0
+        assert fader.cc_number == 1
+        assert fader.label == "Test"
+        assert fader.value == 0
+
+    @pytest.mark.asyncio
+    async def test_mode_toggle(self):
+        """Pressing v toggles between modes."""
+        from fadercat.tui import FadercatApp, FaderScreen, MODE_VERTICAL, MODE_HORIZONTAL
+
+        with patch("fadercat.midi.mido.get_output_names", return_value=[]):
+            with patch("fadercat.midi.mido.open_output"):
+                app = FadercatApp()
+                async with app.run_test() as pilot:
+                    await pilot.pause()
+                    await pilot.pause()  # Extra pause for rebuild
+
+                    screen = app.screen
+                    assert isinstance(screen, FaderScreen)
+                    # Starts in vertical mode (default for fresh config)
+                    initial_mode = screen.display_mode
+                    assert initial_mode == MODE_VERTICAL
+
+                    # Toggle to horizontal
+                    await pilot.press("v")
+                    await pilot.pause()
+                    await pilot.pause()  # Extra pause for rebuild
+                    assert screen.display_mode == MODE_HORIZONTAL
+
+                    # Toggle back to vertical
+                    await pilot.press("v")
+                    await pilot.pause()
+                    await pilot.pause()  # Extra pause for rebuild
+                    assert screen.display_mode == MODE_VERTICAL
+
+    @pytest.mark.asyncio
+    async def test_horizontal_mode_key_bindings(self):
+        """In horizontal mode, j/k selects and h/l adjusts."""
+        from fadercat.tui import FadercatApp, FaderScreen, MODE_HORIZONTAL
+
+        with patch("fadercat.midi.mido.get_output_names", return_value=[]):
+            with patch("fadercat.midi.mido.open_output"):
+                app = FadercatApp()
+                async with app.run_test() as pilot:
+                    await pilot.pause()
+                    await pilot.pause()  # Extra pause for rebuild
+
+                    screen = app.screen
+                    assert isinstance(screen, FaderScreen)
+
+                    # Switch to horizontal mode
+                    await pilot.press("v")
+                    await pilot.pause()
+                    await pilot.pause()  # Extra pause for rebuild
+                    assert screen.display_mode == MODE_HORIZONTAL
+
+                    # j should select next fader (down)
+                    assert screen.selected_fader == -1
+                    await pilot.press("j")
+                    await pilot.pause()
+                    assert screen.selected_fader == 0
+
+                    # j again should go to next
+                    await pilot.press("j")
+                    await pilot.pause()
+                    assert screen.selected_fader == 1
+
+                    # k should go back up
+                    await pilot.press("k")
+                    await pilot.pause()
+                    assert screen.selected_fader == 0
+
+    @pytest.mark.asyncio
+    async def test_horizontal_mode_adjust_with_hl(self):
+        """In horizontal mode, l increases and h decreases selected fader."""
+        from fadercat.tui import FadercatApp, FaderScreen
+
+        with patch("fadercat.midi.mido.get_output_names", return_value=[]):
+            with patch("fadercat.midi.mido.open_output"):
+                app = FadercatApp()
+                async with app.run_test() as pilot:
+                    await pilot.pause()
+
+                    screen = app.screen
+                    assert isinstance(screen, FaderScreen)
+
+                    # Switch to horizontal mode
+                    await pilot.press("v")
+                    await pilot.pause()
+                    await pilot.pause()  # Extra pause for rebuild
+
+                    # Select fader 1
+                    await pilot.press("1")
+                    await pilot.pause()
+                    assert screen.selected_fader == 0
+
+                    # Get initial value - use _get_active_faders() for robustness
+                    faders = screen._get_active_faders()
+                    assert len(faders) == 8
+                    fader = faders[0]
+                    initial_value = fader.value
+
+                    # l should increase
+                    await pilot.press("l")
+                    await pilot.pause()
+                    assert fader.value > initial_value
+
+                    # h should decrease
+                    current_value = fader.value
+                    await pilot.press("h")
+                    await pilot.pause()
+                    assert fader.value < current_value
+
+    @pytest.mark.asyncio
+    async def test_values_preserved_on_mode_toggle(self):
+        """Fader values are preserved when toggling modes."""
+        from fadercat.tui import FadercatApp, FaderScreen
+
+        with patch("fadercat.midi.mido.get_output_names", return_value=[]):
+            with patch("fadercat.midi.mido.open_output"):
+                app = FadercatApp()
+                async with app.run_test() as pilot:
+                    await pilot.pause()
+                    await pilot.pause()  # Extra pause for rebuild
+
+                    screen = app.screen
+                    assert isinstance(screen, FaderScreen)
+
+                    # Set a value on fader 1
+                    await pilot.press("1")
+                    await pilot.pause()
+                    faders = screen._get_active_faders()
+                    faders[0].value = 100
+
+                    # Toggle to horizontal
+                    await pilot.press("v")
+                    await pilot.pause()
+                    await pilot.pause()  # Extra pause for rebuild
+
+                    # Value should be preserved
+                    faders = screen._get_active_faders()
+                    assert faders[0].value == 100
+
+                    # Toggle back
+                    await pilot.press("v")
+                    await pilot.pause()
+                    await pilot.pause()  # Extra pause for rebuild
+
+                    # Value still preserved
+                    faders = screen._get_active_faders()
+                    assert faders[0].value == 100

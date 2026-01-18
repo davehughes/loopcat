@@ -233,6 +233,22 @@ def list_patches(
         "-b",
         help="Filter by original RC-300 bank number.",
     ),
+    output: str = typer.Option(
+        "pretty",
+        "--output",
+        "-o",
+        help="Output format: pretty, json, or yaml.",
+    ),
+    json_flag: bool = typer.Option(
+        False,
+        "--json",
+        help="Output as JSON (shorthand for --output json).",
+    ),
+    yaml_flag: bool = typer.Option(
+        False,
+        "--yaml",
+        help="Output as YAML (shorthand for --output yaml).",
+    ),
     db_path: Path = typer.Option(
         DEFAULT_DB_PATH,
         "--db",
@@ -240,6 +256,15 @@ def list_patches(
     ),
 ) -> None:
     """List all patches and tracks in the catalog."""
+    import json
+    import yaml
+
+    # Shorthand flags override --output
+    if json_flag:
+        output = "json"
+    elif yaml_flag:
+        output = "yaml"
+
     db = Database(db_path)
 
     if patch is not None:
@@ -250,11 +275,23 @@ def list_patches(
         patches = db.get_all_patches()
 
     if not patches:
-        console.print("[yellow]No patches found.[/yellow]")
+        if output == "pretty":
+            console.print("[yellow]No patches found.[/yellow]")
+        elif output == "json":
+            print("[]")
+        elif output == "yaml":
+            print("[]")
         return
 
-    for p in patches:
-        _print_patch(p)
+    if output == "json":
+        data = [p.model_dump(mode="json") for p in patches]
+        print(json.dumps(data, indent=2))
+    elif output == "yaml":
+        data = [p.model_dump(mode="json") for p in patches]
+        print(yaml.dump(data, default_flow_style=False, sort_keys=False))
+    else:
+        for p in patches:
+            _print_patch(p)
 
 
 @app.command()

@@ -237,7 +237,8 @@ class PlayerApp(App):
         dock: top;
         height: auto;
         padding: 0 1;
-        margin-top: 1;
+        margin: 1 1 0 1;
+        border: solid $primary;
     }
 
     #tracks-container {

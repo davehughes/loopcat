@@ -47,8 +47,8 @@ loopcat list
 loopcat search "funky guitar"
 
 # 5. Play with TUI (RC-300 style controls)
-loopcat play              # Shows patch selector
-loopcat play 42           # Play specific patch
+loopcat                   # Launch TUI (default command)
+loopcat play 42           # Play specific patch directly
 ```
 
 ## Commands
@@ -119,39 +119,50 @@ Searches patch names, descriptions, moods, tags, track names, roles, and instrum
 
 ### `loopcat play [PATCH]`
 
-Launch the TUI player with RC-300 style controls.
+Launch the TUI player with RC-300 style controls. This is the default command when running `loopcat` with no arguments.
 
 ```bash
-loopcat play              # Shows patch selector (/ to search)
+loopcat                   # Shows patch picker (default command)
+loopcat play              # Same as above
 loopcat play 42           # Play specific patch directly
 ```
 
-**Controls:**
+**Patch Picker Controls:**
 | Key | Action |
 |-----|--------|
-| `SPACE` | All Play/Stop (toggle all tracks) |
+| `j` `↓` `C-j` | Move down |
+| `k` `↑` `C-k` | Move up |
+| `Enter` | Play selected patch |
+| `t` | Theme picker |
+| `Esc` | Quit |
+
+**Player Controls:**
+| Key | Action |
+|-----|--------|
+| `Space` | Start/stop all tracks |
 | `1` `2` `3` | Toggle individual tracks |
-| `←` `→` | Previous/Next patch |
-| `L` | Toggle loop mode |
-| `ESC` | Back to patch selector |
-| `Q` | Quit |
+| `h` `←` | Previous patch |
+| `l` `→` | Next patch |
+| `t` | Theme picker |
+| `q` `,` | Back to patch picker |
+| `Esc` | Quit |
 
 **Navigation flow:**
 ```
-loopcat play
+loopcat
     │
     ▼
 ┌─────────────────┐
-│ Patch Selector  │◄────────┐
-│ (/ to search)   │         │
+│  Patch Picker   │◄────────┐
+│ (type to filter)│         │
 └────────┬────────┘         │
-         │ Enter            │ ESC
+         │ Enter            │ q or ,
          ▼                  │
 ┌─────────────────┐         │
 │   TUI Player    │─────────┘
-│ (SPACE, 1-3, L) │
+│ (auto-plays)    │
 └────────┬────────┘
-         │ Q
+         │ Esc
          ▼
        Exit
 ```
@@ -208,6 +219,17 @@ $ loopcat list --patch 42
  2      Rhythm Guitar     rhythm  32.5s     92   E minor
  3      Wah Lead          lead    32.5s     92   E minor
 ```
+
+### `loopcat theme [THEME]`
+
+Set the TUI color theme. Over 300 themes available including built-in Textual themes and Base16 color schemes.
+
+```bash
+loopcat theme                 # List available themes
+loopcat theme dracula         # Set theme
+```
+
+Press `t` in the TUI to open an interactive theme picker with live preview.
 
 ## Requirements
 

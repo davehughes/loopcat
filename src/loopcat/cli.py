@@ -82,7 +82,7 @@ def auth(
 
 
 # Import themes from tui.py to stay in sync
-from loopcat.tui import THEMES, BASE16_THEMES
+from cat_common import THEMES, BASE16_THEMES
 
 # Terminal colors available in simple-term-menu
 # Using typical bright terminal colors (not full saturation gray which pulls everything)

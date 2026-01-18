@@ -235,7 +235,7 @@ class PlayerApp(App):
 
     #progress-bar {
         dock: top;
-        height: 1;
+        height: auto;
         padding: 0 1;
         margin-top: 1;
     }
@@ -247,7 +247,7 @@ class PlayerApp(App):
     TrackWidget {
         padding: 0 1;
         border: solid $primary;
-        height: 1;
+        height: auto;
     }
     """
 

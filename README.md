@@ -15,6 +15,12 @@ A CLI tool to catalog WAV files from a Boss RC-300 looper pedal with AI-powered 
 - **Search** your catalog with full-text search
 - **Export** metadata to JSON or CSV for use in DAWs and sample managers
 
+## Screencaps
+<img width="860" height="417" alt="image" src="https://github.com/user-attachments/assets/8b0ee3ec-b11a-4349-b3a3-ef21c778d22a" />
+<img width="862" height="411" alt="image" src="https://github.com/user-attachments/assets/dd9b219e-e043-4ca2-a34b-13eebafe4ced" />
+<img width="858" height="413" alt="image" src="https://github.com/user-attachments/assets/b339054e-ca85-449c-aaa4-ab4caae83d46" />
+
+
 ## Installation
 
 ```bash

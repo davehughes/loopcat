@@ -213,26 +213,24 @@ class PianoKey(Static):
 
     DEFAULT_CSS = """
     PianoKey {
-        content-align: center bottom;
+        content-align: center middle;
         text-align: center;
     }
 
     PianoKey.white {
-        width: 6;
-        height: 6;
+        width: 5;
+        height: 3;
         background: $surface-lighten-3;
         border: solid $surface-darken-2;
-        color: $text;
+        color: $text-muted;
     }
 
     PianoKey.black {
-        width: 4;
-        height: 4;
+        width: 3;
+        height: 2;
         background: $surface-darken-3;
         border: solid $surface-darken-1;
         color: $text;
-        margin-left: -2;
-        margin-right: -2;
     }
 
     PianoKey.white.pressed {
@@ -259,8 +257,11 @@ class PianoKey(Static):
             self.add_class("white")
 
     def render(self) -> str:
-        note_name = note_to_name(self.note)
-        return f"{note_name}\n[dim]{self.key_label}[/]"
+        # Only show octave number on C keys
+        if not self.is_black and self.note % 12 == 0:
+            octave = (self.note // 12) - 1
+            return f"{octave}"
+        return ""
 
     def watch_pressed(self, pressed: bool) -> None:
         if pressed:
@@ -282,22 +283,48 @@ class KeyboardContainer(Container):
     """
 
 
-class BlackKeyRow(Horizontal):
-    """Row for black keys with spacing."""
+class BlackKeyLabels(Horizontal):
+    """Row for black key labels above the keys."""
 
     DEFAULT_CSS = """
-    BlackKeyRow {
-        height: 4;
+    BlackKeyLabels {
+        height: 1;
         width: auto;
         padding-left: 4;
     }
 
-    BlackKeyRow .spacer {
-        width: 4;
+    BlackKeyLabels .label {
+        width: 3;
+        text-align: center;
+        color: $text-muted;
     }
 
-    BlackKeyRow .wide-spacer {
-        width: 8;
+    BlackKeyLabels .gap {
+        width: 2;
+    }
+
+    BlackKeyLabels .wide-gap {
+        width: 7;
+    }
+    """
+
+
+class BlackKeyRow(Horizontal):
+    """Row for black keys with proper spacing."""
+
+    DEFAULT_CSS = """
+    BlackKeyRow {
+        height: auto;
+        width: auto;
+        padding-left: 4;
+    }
+
+    BlackKeyRow .gap {
+        width: 2;
+    }
+
+    BlackKeyRow .wide-gap {
+        width: 7;
     }
     """
 
@@ -309,6 +336,23 @@ class WhiteKeyRow(Horizontal):
     WhiteKeyRow {
         height: auto;
         width: auto;
+    }
+    """
+
+
+class WhiteKeyLabels(Horizontal):
+    """Row for white key labels below the keys."""
+
+    DEFAULT_CSS = """
+    WhiteKeyLabels {
+        height: 1;
+        width: auto;
+    }
+
+    WhiteKeyLabels .label {
+        width: 5;
+        text-align: center;
+        color: $text-muted;
     }
     """
 
@@ -1641,15 +1685,32 @@ class KeyboardScreen(Screen):
         yield StatusBar(self._make_status())
         with MainContent():
             with KeyboardContainer():
-                # Black keys row (with spacers for proper positioning)
+                # Black key labels (above keys) - must match key spacing
+                with BlackKeyLabels():
+                    yield Static("W", classes="label")
+                    yield Static("", classes="gap")
+                    yield Static("E", classes="label")
+                    yield Static("", classes="wide-gap")
+                    yield Static("T", classes="label")
+                    yield Static("", classes="gap")
+                    yield Static("Y", classes="label")
+                    yield Static("", classes="gap")
+                    yield Static("U", classes="label")
+                    yield Static("", classes="wide-gap")
+                    yield Static("O", classes="label")
+                    yield Static("", classes="gap")
+                    yield Static("P", classes="label")
+
+                # Black keys row
                 with BlackKeyRow():
-                    # C# D# [gap] F# G# A# [gap] C# D#
                     for i, (key, offset, label) in enumerate(zip(
                         PIANO_BLACK_KEYS, PIANO_BLACK_OFFSETS, PIANO_BLACK_LABELS
                     )):
-                        # Add spacer before F# (index 2) and before second C# (index 5)
+                        # Add wide gap before F# (index 2) and before second C# (index 5)
                         if i == 2 or i == 5:
-                            yield Static("", classes="wide-spacer")
+                            yield Static("", classes="wide-gap")
+                        elif i > 0:
+                            yield Static("", classes="gap")
                         note = self._offset_to_note(offset)
                         piano_key = PianoKey(label, note, is_black=True, id=f"key-{key}")
                         self._keys[key] = piano_key
@@ -1664,6 +1725,11 @@ class KeyboardScreen(Screen):
                         piano_key = PianoKey(label, note, is_black=False, id=f"key-{key}")
                         self._keys[key] = piano_key
                         yield piano_key
+
+                # White key labels (below keys)
+                with WhiteKeyLabels():
+                    for label in PIANO_WHITE_LABELS:
+                        yield Static(label, classes="label")
 
             yield SidePanel()
         yield KeyboardFooter()

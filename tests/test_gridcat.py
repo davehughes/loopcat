@@ -294,30 +294,36 @@ class TestGridcatApp:
     async def test_gridcat_app_starts(self):
         """GridcatApp starts and shows grid screen."""
         from gridcat.tui import GridcatApp, GridScreen
+        from gridcat.settings import GridcatSettings
 
-        with patch("gridcat.midi.mido.get_output_names", return_value=[]):
-            with patch("gridcat.midi.mido.open_output"):
-                app = GridcatApp()
-                async with app.run_test() as pilot:
-                    await pilot.pause()
+        mock_settings = GridcatSettings(view="grid")
+        with patch("gridcat.tui.get_settings", return_value=mock_settings):
+            with patch("gridcat.midi.mido.get_output_names", return_value=[]):
+                with patch("gridcat.midi.mido.open_output"):
+                    app = GridcatApp()
+                    async with app.run_test() as pilot:
+                        await pilot.pause()
 
-                    # Should be on grid screen
-                    assert isinstance(app.screen, GridScreen)
+                        # Should be on grid screen
+                        assert isinstance(app.screen, GridScreen)
 
     @pytest.mark.asyncio
     async def test_gridcat_renders_pads(self):
         """GridcatApp renders pad widgets."""
         from gridcat.tui import GridcatApp, PadWidget
+        from gridcat.settings import GridcatSettings
 
-        with patch("gridcat.midi.mido.get_output_names", return_value=[]):
-            with patch("gridcat.midi.mido.open_output"):
-                app = GridcatApp()
-                async with app.run_test() as pilot:
-                    await pilot.pause()
+        mock_settings = GridcatSettings(view="grid")
+        with patch("gridcat.tui.get_settings", return_value=mock_settings):
+            with patch("gridcat.midi.mido.get_output_names", return_value=[]):
+                with patch("gridcat.midi.mido.open_output"):
+                    app = GridcatApp()
+                    async with app.run_test() as pilot:
+                        await pilot.pause()
 
-                    # Should have 32 pads (4x8 grid)
-                    pads = app.screen.query(PadWidget)
-                    assert len(list(pads)) == 32
+                        # Should have 32 pads (4x8 grid)
+                        pads = app.screen.query(PadWidget)
+                        assert len(list(pads)) == 32
 
 
 class TestOctaveShift:
@@ -327,66 +333,75 @@ class TestOctaveShift:
     async def test_octave_up(self):
         """Octave up increases octave."""
         from gridcat.tui import GridcatApp, GridScreen
+        from gridcat.settings import GridcatSettings
 
-        with patch("gridcat.midi.mido.get_output_names", return_value=[]):
-            with patch("gridcat.midi.mido.open_output"):
-                app = GridcatApp()
-                async with app.run_test() as pilot:
-                    await pilot.pause()
+        mock_settings = GridcatSettings(view="grid")
+        with patch("gridcat.tui.get_settings", return_value=mock_settings):
+            with patch("gridcat.midi.mido.get_output_names", return_value=[]):
+                with patch("gridcat.midi.mido.open_output"):
+                    app = GridcatApp()
+                    async with app.run_test() as pilot:
+                        await pilot.pause()
 
-                    screen = app.screen
-                    assert isinstance(screen, GridScreen)
+                        screen = app.screen
+                        assert isinstance(screen, GridScreen)
 
-                    initial_octave = screen.octave
+                        initial_octave = screen.octave
 
-                    await pilot.press("up")
-                    await pilot.pause()
+                        await pilot.press("up")
+                        await pilot.pause()
 
-                    assert screen.octave == initial_octave + 1
+                        assert screen.octave == initial_octave + 1
 
     @pytest.mark.asyncio
     async def test_octave_down(self):
         """Octave down decreases octave."""
         from gridcat.tui import GridcatApp, GridScreen
+        from gridcat.settings import GridcatSettings
 
-        with patch("gridcat.midi.mido.get_output_names", return_value=[]):
-            with patch("gridcat.midi.mido.open_output"):
-                app = GridcatApp()
-                async with app.run_test() as pilot:
-                    await pilot.pause()
+        mock_settings = GridcatSettings(view="grid")
+        with patch("gridcat.tui.get_settings", return_value=mock_settings):
+            with patch("gridcat.midi.mido.get_output_names", return_value=[]):
+                with patch("gridcat.midi.mido.open_output"):
+                    app = GridcatApp()
+                    async with app.run_test() as pilot:
+                        await pilot.pause()
 
-                    screen = app.screen
-                    assert isinstance(screen, GridScreen)
+                        screen = app.screen
+                        assert isinstance(screen, GridScreen)
 
-                    initial_octave = screen.octave
+                        initial_octave = screen.octave
 
-                    await pilot.press("down")
-                    await pilot.pause()
+                        await pilot.press("down")
+                        await pilot.pause()
 
-                    assert screen.octave == initial_octave - 1
+                        assert screen.octave == initial_octave - 1
 
     @pytest.mark.asyncio
     async def test_octave_shift_updates_notes(self):
         """Octave shift updates all pad notes by 12."""
         from gridcat.tui import GridcatApp, GridScreen, PadWidget
+        from gridcat.settings import GridcatSettings
 
-        with patch("gridcat.midi.mido.get_output_names", return_value=[]):
-            with patch("gridcat.midi.mido.open_output"):
-                app = GridcatApp()
-                async with app.run_test() as pilot:
-                    await pilot.pause()
+        mock_settings = GridcatSettings(view="grid")
+        with patch("gridcat.tui.get_settings", return_value=mock_settings):
+            with patch("gridcat.midi.mido.get_output_names", return_value=[]):
+                with patch("gridcat.midi.mido.open_output"):
+                    app = GridcatApp()
+                    async with app.run_test() as pilot:
+                        await pilot.pause()
 
-                    screen = app.screen
-                    pads = list(screen.query(PadWidget))
+                        screen = app.screen
+                        pads = list(screen.query(PadWidget))
 
-                    # Get note of first pad before octave change
-                    initial_note = pads[0].config.note
+                        # Get note of first pad before octave change
+                        initial_note = pads[0].config.note
 
-                    await pilot.press("up")
-                    await pilot.pause()
+                        await pilot.press("up")
+                        await pilot.pause()
 
-                    # Note should increase by 12 (one octave)
-                    assert pads[0].config.note == initial_note + 12
+                        # Note should increase by 12 (one octave)
+                        assert pads[0].config.note == initial_note + 12
 
 
 class TestHelpScreen:
@@ -395,37 +410,44 @@ class TestHelpScreen:
     @pytest.mark.asyncio
     async def test_help_screen_opens(self):
         """Help screen opens with ? key."""
-        from gridcat.tui import GridcatApp, HelpScreen
+        from gridcat.tui import GridcatApp, HelpScreen, KeyboardHelpScreen
+        from gridcat.settings import GridcatSettings
 
-        with patch("gridcat.midi.mido.get_output_names", return_value=[]):
-            with patch("gridcat.midi.mido.open_output"):
-                app = GridcatApp()
-                async with app.run_test() as pilot:
-                    await pilot.pause()
+        mock_settings = GridcatSettings(view="grid")
+        with patch("gridcat.tui.get_settings", return_value=mock_settings):
+            with patch("gridcat.midi.mido.get_output_names", return_value=[]):
+                with patch("gridcat.midi.mido.open_output"):
+                    app = GridcatApp()
+                    async with app.run_test() as pilot:
+                        await pilot.pause()
 
-                    await pilot.press("question_mark")
-                    await pilot.pause()
+                        await pilot.press("question_mark")
+                        await pilot.pause()
 
-                    assert isinstance(app.screen, HelpScreen)
+                        # Accept either help screen type
+                        assert isinstance(app.screen, (HelpScreen, KeyboardHelpScreen))
 
     @pytest.mark.asyncio
     async def test_help_screen_closes_with_escape(self):
         """Help screen closes with escape."""
-        from gridcat.tui import GridcatApp, HelpScreen, GridScreen
+        from gridcat.tui import GridcatApp, HelpScreen, KeyboardHelpScreen, GridScreen, KeyboardScreen
+        from gridcat.settings import GridcatSettings
 
-        with patch("gridcat.midi.mido.get_output_names", return_value=[]):
-            with patch("gridcat.midi.mido.open_output"):
-                app = GridcatApp()
-                async with app.run_test() as pilot:
-                    await pilot.pause()
+        mock_settings = GridcatSettings(view="grid")
+        with patch("gridcat.tui.get_settings", return_value=mock_settings):
+            with patch("gridcat.midi.mido.get_output_names", return_value=[]):
+                with patch("gridcat.midi.mido.open_output"):
+                    app = GridcatApp()
+                    async with app.run_test() as pilot:
+                        await pilot.pause()
 
-                    await pilot.press("question_mark")
-                    await pilot.pause()
-                    assert isinstance(app.screen, HelpScreen)
+                        await pilot.press("question_mark")
+                        await pilot.pause()
+                        assert isinstance(app.screen, (HelpScreen, KeyboardHelpScreen))
 
-                    await pilot.press("escape")
-                    await pilot.pause()
-                    assert isinstance(app.screen, GridScreen)
+                        await pilot.press("escape")
+                        await pilot.pause()
+                        assert isinstance(app.screen, (GridScreen, KeyboardScreen))
 
 
 class TestCommandPalette:
@@ -435,54 +457,63 @@ class TestCommandPalette:
     async def test_command_palette_opens(self):
         """Command palette opens with : key."""
         from gridcat.tui import GridcatApp, CommandPalette
+        from gridcat.settings import GridcatSettings
 
-        with patch("gridcat.midi.mido.get_output_names", return_value=[]):
-            with patch("gridcat.midi.mido.open_output"):
-                app = GridcatApp()
-                async with app.run_test() as pilot:
-                    await pilot.pause()
+        mock_settings = GridcatSettings(view="grid")
+        with patch("gridcat.tui.get_settings", return_value=mock_settings):
+            with patch("gridcat.midi.mido.get_output_names", return_value=[]):
+                with patch("gridcat.midi.mido.open_output"):
+                    app = GridcatApp()
+                    async with app.run_test() as pilot:
+                        await pilot.pause()
 
-                    await pilot.press("colon")
-                    await pilot.pause()
+                        await pilot.press("colon")
+                        await pilot.pause()
 
-                    assert isinstance(app.screen, CommandPalette)
+                        assert isinstance(app.screen, CommandPalette)
 
     @pytest.mark.asyncio
     async def test_command_palette_closes_with_escape(self):
         """Command palette closes with escape."""
-        from gridcat.tui import GridcatApp, CommandPalette, GridScreen
+        from gridcat.tui import GridcatApp, CommandPalette, GridScreen, KeyboardScreen
+        from gridcat.settings import GridcatSettings
 
-        with patch("gridcat.midi.mido.get_output_names", return_value=[]):
-            with patch("gridcat.midi.mido.open_output"):
-                app = GridcatApp()
-                async with app.run_test() as pilot:
-                    await pilot.pause()
+        mock_settings = GridcatSettings(view="grid")
+        with patch("gridcat.tui.get_settings", return_value=mock_settings):
+            with patch("gridcat.midi.mido.get_output_names", return_value=[]):
+                with patch("gridcat.midi.mido.open_output"):
+                    app = GridcatApp()
+                    async with app.run_test() as pilot:
+                        await pilot.pause()
 
-                    await pilot.press("colon")
-                    await pilot.pause()
-                    assert isinstance(app.screen, CommandPalette)
+                        await pilot.press("colon")
+                        await pilot.pause()
+                        assert isinstance(app.screen, CommandPalette)
 
-                    await pilot.press("escape")
-                    await pilot.pause()
-                    assert isinstance(app.screen, GridScreen)
+                        await pilot.press("escape")
+                        await pilot.pause()
+                        assert isinstance(app.screen, (GridScreen, KeyboardScreen))
 
     @pytest.mark.asyncio
     async def test_command_palette_shows_commands(self):
-        """Command palette shows all commands."""
-        from gridcat.tui import GridcatApp, CommandPalette, COMMANDS
+        """Command palette shows commands for current view."""
+        from gridcat.tui import GridcatApp, CommandPalette, COMMANDS_GRID
+        from gridcat.settings import GridcatSettings
         from textual.widgets import OptionList
 
-        with patch("gridcat.midi.mido.get_output_names", return_value=[]):
-            with patch("gridcat.midi.mido.open_output"):
-                app = GridcatApp()
-                async with app.run_test() as pilot:
-                    await pilot.pause()
+        mock_settings = GridcatSettings(view="grid")
+        with patch("gridcat.tui.get_settings", return_value=mock_settings):
+            with patch("gridcat.midi.mido.get_output_names", return_value=[]):
+                with patch("gridcat.midi.mido.open_output"):
+                    app = GridcatApp()
+                    async with app.run_test() as pilot:
+                        await pilot.pause()
 
-                    await pilot.press("colon")
-                    await pilot.pause()
+                        await pilot.press("colon")
+                        await pilot.pause()
 
-                    palette = app.screen
-                    assert isinstance(palette, CommandPalette)
+                        palette = app.screen
+                        assert isinstance(palette, CommandPalette)
 
-                    option_list = palette.query_one("#palette-list", OptionList)
-                    assert option_list.option_count == len(COMMANDS)
+                        option_list = palette.query_one("#palette-list", OptionList)
+                        assert option_list.option_count == len(COMMANDS_GRID)

@@ -32,6 +32,7 @@ class PlayerState:
 
     tracks: dict[int, TrackState] = field(default_factory=dict)
     master_playing: bool = False
+    master_position: int = 0  # Global sample counter for sync
     loop: bool = True
     _stream: Optional[sd.OutputStream] = None
     _lock: threading.Lock = field(default_factory=threading.Lock)
@@ -93,21 +94,25 @@ class AudioPlayer:
         outdata.fill(0)
 
         with self.state._lock:
+            any_playing = False
+
             for track in self.state.tracks.values():
                 if not track.playing:
                     continue
 
-                # Get the chunk of audio for this track
-                start = track.position
+                any_playing = True
+
+                # Calculate position from master (synced playback)
+                track_len = len(track.data)
+                start = self.state.master_position % track_len
                 end = start + frames
 
-                if end <= len(track.data):
-                    # Normal playback
+                if end <= track_len:
+                    # Normal playback within track bounds
                     chunk = track.data[start:end]
-                    track.position = end
                 elif track.loop:
                     # Loop: wrap around
-                    remaining = len(track.data) - start
+                    remaining = track_len - start
                     if remaining > 0:
                         chunk = np.vstack([
                             track.data[start:],
@@ -115,19 +120,24 @@ class AudioPlayer:
                         ])
                     else:
                         chunk = track.data[: frames]
-                    track.position = (end) % len(track.data)
                 else:
                     # No loop: play what's left, then stop
                     chunk = np.zeros((frames, 2), dtype="float32")
-                    remaining = len(track.data) - start
+                    remaining = track_len - start
                     if remaining > 0:
                         chunk[:remaining] = track.data[start:]
                     track.playing = False
-                    track.position = 0
+
+                # Update track position for display purposes
+                track.position = (start + frames) % track_len
 
                 # Mix into output (simple sum, could add volume control)
                 if len(chunk) == frames:
                     outdata[:] += chunk
+
+            # Advance master position if any track is playing
+            if any_playing:
+                self.state.master_position += frames
 
         # Clamp to prevent clipping
         np.clip(outdata, -1.0, 1.0, out=outdata)
@@ -194,10 +204,15 @@ class AudioPlayer:
         with self.state._lock:
             if track_number in self.state.tracks:
                 self.state.tracks[track_number].playing = False
-                self.state.tracks[track_number].position = 0
 
             # Update master state
             self.state.master_playing = any(t.playing for t in self.state.tracks.values())
+
+            # Reset master position if no tracks are playing
+            if not self.state.master_playing:
+                self.state.master_position = 0
+                for track in self.state.tracks.values():
+                    track.position = 0
 
     def toggle_track(self, track_number: int) -> None:
         """Toggle a track's play state.
@@ -208,13 +223,15 @@ class AudioPlayer:
         with self.state._lock:
             if track_number in self.state.tracks:
                 track = self.state.tracks[track_number]
-                if track.playing:
-                    track.playing = False
-                    track.position = 0
-                else:
-                    track.playing = True
+                track.playing = not track.playing
 
                 self.state.master_playing = any(t.playing for t in self.state.tracks.values())
+
+                # Reset master position if no tracks are playing
+                if not self.state.master_playing:
+                    self.state.master_position = 0
+                    for t in self.state.tracks.values():
+                        t.position = 0
 
     def play_all(self) -> None:
         """Start all tracks."""
@@ -230,6 +247,7 @@ class AudioPlayer:
                 track.playing = False
                 track.position = 0
             self.state.master_playing = False
+            self.state.master_position = 0
 
     def toggle_all(self) -> None:
         """Toggle all tracks (RC-300 style all start/stop)."""
@@ -239,6 +257,7 @@ class AudioPlayer:
                     track.playing = False
                     track.position = 0
                 self.state.master_playing = False
+                self.state.master_position = 0
             else:
                 for track in self.state.tracks.values():
                     track.playing = True

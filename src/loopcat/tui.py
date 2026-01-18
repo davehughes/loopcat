@@ -514,11 +514,19 @@ class PlayerScreen(Screen):
         """Initialize audio player when screen mounts."""
         self.player = AudioPlayer(on_position_update=self._on_position_update)
 
-        # Load all tracks
+        # Load all tracks (prefer MP3 over WAV)
         for track in self.patch.tracks:
-            wav_path = Path(track.wav_path)
-            if wav_path.exists():
-                self.player.load_track(track.track_number, wav_path)
+            audio_path = None
+            if track.mp3_path:
+                mp3_path = Path(track.mp3_path)
+                if mp3_path.exists():
+                    audio_path = mp3_path
+            if audio_path is None:
+                wav_path = Path(track.wav_path)
+                if wav_path.exists():
+                    audio_path = wav_path
+            if audio_path:
+                self.player.load_track(track.track_number, audio_path)
 
         # Set initial progress bar state (use longest track duration)
         max_duration = (

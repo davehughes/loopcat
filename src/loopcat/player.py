@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Optional
 
+import librosa
 import numpy as np
 import sounddevice as sd
 import soundfile as sf
@@ -55,13 +56,25 @@ class AudioPlayer:
         self._thread: Optional[threading.Thread] = None
 
     def load_track(self, track_number: int, file_path: Path) -> None:
-        """Load a track from a WAV file.
+        """Load a track from an audio file (WAV or MP3).
 
         Args:
             track_number: Track number (1, 2, or 3).
-            file_path: Path to the WAV file.
+            file_path: Path to the audio file.
         """
-        data, sample_rate = sf.read(file_path, dtype="float32")
+        suffix = file_path.suffix.lower()
+
+        if suffix == ".mp3":
+            # librosa returns (samples,) for mono or (samples, channels) with mono=False
+            # But actually librosa returns (channels, samples) when mono=False
+            data, sample_rate = librosa.load(file_path, sr=None, mono=False)
+            # librosa returns (channels, samples) for stereo, transpose to (samples, channels)
+            if data.ndim == 2:
+                data = data.T
+            data = data.astype(np.float32)
+        else:
+            # WAV, FLAC, OGG, etc. via soundfile
+            data, sample_rate = sf.read(file_path, dtype="float32")
 
         # Convert mono to stereo if needed
         if len(data.shape) == 1:

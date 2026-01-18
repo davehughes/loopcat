@@ -6,7 +6,7 @@ from unittest.mock import patch, MagicMock
 import pytest
 
 from loopcat.models import Patch, Track
-from loopcat.tui import TrackWidget, PlayerApp
+from loopcat.tui import TrackWidget, PlayerApp, ThemePickerScreen, THEMES
 
 
 @pytest.fixture
@@ -176,3 +176,194 @@ class TestPlayerAppAsync:
 
                 assert len(widget_list) == 1
                 assert widget_list[0].track_number == 1
+
+
+class TestThemePickerScreen:
+    """Tests for ThemePickerScreen."""
+
+    def test_theme_picker_creation(self):
+        """Test that ThemePickerScreen can be instantiated."""
+        screen = ThemePickerScreen("textual-dark")
+        assert screen.current_theme == "textual-dark"
+        assert screen.filter_text == ""
+
+    def test_themes_list_not_empty(self):
+        """Test that THEMES list contains themes."""
+        assert len(THEMES) > 0
+        assert "textual-dark" in THEMES
+
+    def test_themes_list_has_no_duplicates(self):
+        """Test that THEMES list has no duplicate entries."""
+        assert len(THEMES) == len(set(THEMES))
+
+    @pytest.mark.asyncio
+    async def test_theme_picker_renders_option_list(self, sample_patch_single_track):
+        """Test that ThemePickerScreen renders an OptionList with themes."""
+        from textual.widgets import OptionList, Input
+
+        with patch('loopcat.tui.AudioPlayer') as MockPlayer:
+            mock_player = MagicMock()
+            mock_player.get_track_info.return_value = (0.0, 10.0, False)
+            MockPlayer.return_value = mock_player
+
+            app = PlayerApp(sample_patch_single_track)
+            async with app.run_test() as pilot:
+                # Press 't' to open theme picker (mimics user interaction)
+                await pilot.press("t")
+                await pilot.pause()
+
+                # Get the current screen (should be ThemePickerScreen)
+                theme_screen = app.screen
+                assert isinstance(theme_screen, ThemePickerScreen)
+
+                # Verify the option list exists and has themes
+                option_list = theme_screen.query_one("#theme-list", OptionList)
+                assert option_list.option_count == len(THEMES)
+
+                # Verify search input exists
+                search_input = theme_screen.query_one("#theme-search", Input)
+                assert search_input is not None
+
+    @pytest.mark.asyncio
+    async def test_theme_picker_filter(self, sample_patch_single_track):
+        """Test that typing in search filters the theme list."""
+        from textual.widgets import OptionList, Input
+
+        with patch('loopcat.tui.AudioPlayer') as MockPlayer:
+            mock_player = MagicMock()
+            mock_player.get_track_info.return_value = (0.0, 10.0, False)
+            MockPlayer.return_value = mock_player
+
+            app = PlayerApp(sample_patch_single_track)
+            async with app.run_test() as pilot:
+                # Press 't' to open theme picker
+                await pilot.press("t")
+                await pilot.pause()
+
+                theme_screen = app.screen
+                assert isinstance(theme_screen, ThemePickerScreen)
+
+                # Type "dracula" in the search
+                search_input = theme_screen.query_one("#theme-search", Input)
+                search_input.value = "dracula"
+                await pilot.pause()
+
+                # Option list should be filtered
+                option_list = theme_screen.query_one("#theme-list", OptionList)
+                # Should have fewer options than full list
+                assert option_list.option_count < len(THEMES)
+                assert option_list.option_count > 0  # "dracula" should match
+
+    @pytest.mark.asyncio
+    async def test_theme_picker_cancel_restores_theme(self, sample_patch_single_track):
+        """Test that canceling the picker restores the original theme."""
+        with patch('loopcat.tui.AudioPlayer') as MockPlayer:
+            mock_player = MagicMock()
+            mock_player.get_track_info.return_value = (0.0, 10.0, False)
+            MockPlayer.return_value = mock_player
+
+            app = PlayerApp(sample_patch_single_track)
+            async with app.run_test() as pilot:
+                original_theme = app.theme
+
+                # Press 't' to open theme picker
+                await pilot.press("t")
+                await pilot.pause()
+
+                # Press escape to cancel
+                await pilot.press("escape")
+                await pilot.pause()
+
+                # Theme should be restored
+                assert app.theme == original_theme
+
+    @pytest.mark.asyncio
+    async def test_theme_picker_keyboard_navigation(self, sample_patch_single_track):
+        """Test that arrow keys and ctrl+j/k navigate the theme list."""
+        from textual.widgets import OptionList
+
+        with patch('loopcat.tui.AudioPlayer') as MockPlayer:
+            mock_player = MagicMock()
+            mock_player.get_track_info.return_value = (0.0, 10.0, False)
+            MockPlayer.return_value = mock_player
+
+            app = PlayerApp(sample_patch_single_track)
+            async with app.run_test() as pilot:
+                # Press 't' to open theme picker
+                await pilot.press("t")
+                await pilot.pause()
+
+                theme_screen = app.screen
+                option_list = theme_screen.query_one("#theme-list", OptionList)
+
+                # Set a known starting position
+                option_list.highlighted = 5
+                await pilot.pause()
+
+                # Test ctrl+j to move down (vim-style)
+                await pilot.press("ctrl+j")
+                await pilot.pause()
+                assert option_list.highlighted == 6, f"Expected 6 after ctrl+j, got {option_list.highlighted}"
+
+                # Test ctrl+k to move up (vim-style)
+                await pilot.press("ctrl+k")
+                await pilot.pause()
+                assert option_list.highlighted == 5, f"Expected 5 after ctrl+k, got {option_list.highlighted}"
+
+                # Test down arrow
+                await pilot.press("down")
+                await pilot.pause()
+                assert option_list.highlighted == 6, f"Expected 6 after down, got {option_list.highlighted}"
+
+                # Test up arrow
+                await pilot.press("up")
+                await pilot.pause()
+                assert option_list.highlighted == 5, f"Expected 5 after up, got {option_list.highlighted}"
+
+                # Test ctrl+n to move down
+                await pilot.press("ctrl+n")
+                await pilot.pause()
+                assert option_list.highlighted == 6, f"Expected 6 after ctrl+n, got {option_list.highlighted}"
+
+    @pytest.mark.asyncio
+    async def test_theme_picker_enter_selects_theme(self, sample_patch_single_track):
+        """Test that pressing enter selects the highlighted theme."""
+        from textual.widgets import OptionList
+
+        with patch('loopcat.tui.AudioPlayer') as MockPlayer:
+            mock_player = MagicMock()
+            mock_player.get_track_info.return_value = (0.0, 10.0, False)
+            MockPlayer.return_value = mock_player
+
+            # Mock set_theme to verify it gets called
+            with patch('loopcat.tui.set_theme') as mock_set_theme:
+                app = PlayerApp(sample_patch_single_track)
+                async with app.run_test() as pilot:
+                    original_theme = app.theme
+
+                    # Press 't' to open theme picker
+                    await pilot.press("t")
+                    await pilot.pause()
+
+                    theme_screen = app.screen
+                    assert isinstance(theme_screen, ThemePickerScreen)
+
+                    option_list = theme_screen.query_one("#theme-list", OptionList)
+
+                    # Navigate to a different theme (index 3)
+                    option_list.highlighted = 3
+                    await pilot.pause()
+
+                    # Get the theme name at index 3
+                    target_theme = THEMES[3]
+
+                    # Press enter to select
+                    await pilot.press("enter")
+                    await pilot.pause()
+
+                    # Theme picker should be dismissed and theme should be set
+                    # The screen should no longer be ThemePickerScreen
+                    assert not isinstance(app.screen, ThemePickerScreen), "Theme picker should be dismissed"
+
+                    # set_theme should have been called with the selected theme
+                    mock_set_theme.assert_called_once_with(target_theme)

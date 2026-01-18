@@ -98,3 +98,32 @@ def set_gemini_api_key(api_key: str, config_path: Path = DEFAULT_CONFIG_PATH) ->
     config = load_config(config_path)
     config["gemini_api_key"] = api_key
     save_config(config, config_path)
+
+
+# Default theme
+DEFAULT_THEME = "textual-dark"
+
+
+def get_theme(config_path: Path = DEFAULT_CONFIG_PATH) -> str:
+    """Get the current theme from config.
+
+    Args:
+        config_path: Path to the config file.
+
+    Returns:
+        Theme name (defaults to textual-dark).
+    """
+    config = load_config(config_path)
+    return config.get("theme", DEFAULT_THEME)
+
+
+def set_theme(theme: str, config_path: Path = DEFAULT_CONFIG_PATH) -> None:
+    """Store theme in config file.
+
+    Args:
+        theme: The theme name to store.
+        config_path: Path to the config file.
+    """
+    config = load_config(config_path)
+    config["theme"] = theme
+    save_config(config, config_path)

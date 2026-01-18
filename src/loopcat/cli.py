@@ -78,6 +78,152 @@ def auth(
         console.print(f"Key: {masked}")
 
 
+# Import themes from tui.py to stay in sync
+from loopcat.tui import THEMES
+
+# Menu color presets for simple-term-menu (limited to 8 basic colors)
+MENU_STYLES = {
+    "default": {
+        "menu_cursor_style": ("fg_cyan", "bold"),
+        "menu_highlight_style": ("fg_black", "bg_cyan"),
+    },
+    "yellow": {
+        "menu_cursor_style": ("fg_yellow", "bold"),
+        "menu_highlight_style": ("fg_black", "bg_yellow"),
+    },
+    "green": {
+        "menu_cursor_style": ("fg_green", "bold"),
+        "menu_highlight_style": ("fg_black", "bg_green"),
+    },
+    "purple": {
+        "menu_cursor_style": ("fg_purple", "bold"),
+        "menu_highlight_style": ("fg_black", "bg_purple"),
+    },
+    "red": {
+        "menu_cursor_style": ("fg_red", "bold"),
+        "menu_highlight_style": ("fg_black", "bg_red"),
+    },
+    "blue": {
+        "menu_cursor_style": ("fg_blue", "bold"),
+        "menu_highlight_style": ("fg_black", "bg_blue"),
+    },
+}
+
+
+def get_menu_style() -> dict:
+    """Get menu style kwargs based on config."""
+    from loopcat.config import load_config
+    config = load_config()
+    style_name = config.get("menu_style", "default")
+    return MENU_STYLES.get(style_name, MENU_STYLES["default"])
+
+
+@app.command()
+def theme(
+    name: Optional[str] = typer.Argument(
+        None,
+        help="Theme name to set. If omitted, shows an interactive picker.",
+    ),
+) -> None:
+    """Set the TUI color theme."""
+    from simple_term_menu import TerminalMenu
+
+    from loopcat.config import DEFAULT_CONFIG_PATH, get_theme, set_theme
+
+    current = get_theme()
+
+    if name:
+        # Direct set
+        if name not in THEMES:
+            console.print(f"[red]Error:[/red] Unknown theme '{name}'")
+            console.print(f"Available: {', '.join(THEMES)}")
+            raise typer.Exit(1)
+        set_theme(name)
+        console.print(f"[green]Theme set to:[/green] {name}")
+        return
+
+    # Interactive picker
+    current_index = THEMES.index(current) if current in THEMES else 0
+    menu_entries = [f"{'● ' if t == current else '  '}{t}" for t in THEMES]
+
+    menu = TerminalMenu(
+        menu_entries,
+        title="  Select a theme (current marked with ●):\n",
+        cursor_index=current_index,
+        **get_menu_style(),
+    )
+
+    selected = menu.show()
+    if selected is None:
+        console.print("[yellow]Cancelled[/yellow]")
+        return
+
+    selected_theme = THEMES[selected]
+    set_theme(selected_theme)
+    console.print(f"[green]Theme set to:[/green] {selected_theme}")
+    console.print(f"Saved to {DEFAULT_CONFIG_PATH}")
+
+
+@app.command()
+def menu_style(
+    style: Optional[str] = typer.Argument(
+        None,
+        help="Menu style to set. If omitted, shows an interactive picker.",
+    ),
+) -> None:
+    """Set the terminal menu color style."""
+    from simple_term_menu import TerminalMenu
+
+    from loopcat.config import DEFAULT_CONFIG_PATH, load_config, save_config
+
+    config = load_config()
+    current = config.get("menu_style", "default")
+
+    if style:
+        # Direct set
+        if style not in MENU_STYLES:
+            console.print(f"[red]Error:[/red] Unknown style '{style}'")
+            console.print(f"Available: {', '.join(MENU_STYLES.keys())}")
+            raise typer.Exit(1)
+        config["menu_style"] = style
+        save_config(config)
+        console.print(f"[green]Menu style set to:[/green] {style}")
+        return
+
+    # Show preview of all styles
+    console.print("\n  [bold]Menu Style Preview:[/bold]\n")
+    for name in MENU_STYLES:
+        # Map simple-term-menu colors to Rich colors
+        color = name if name != "default" else "cyan"
+        marker = "●" if name == current else " "
+        console.print(f"  {marker} [{color}]{name:10}[/] │ [black on {color}] Selected Item [/] [dim]unselected[/]")
+    console.print()
+
+    # Interactive picker
+    style_names = list(MENU_STYLES.keys())
+    current_index = style_names.index(current) if current in style_names else 0
+
+    menu_entries = [f"{'● ' if s == current else '  '}{s}" for s in style_names]
+
+    menu = TerminalMenu(
+        menu_entries,
+        title="  Select a menu style:\n",
+        cursor_index=current_index,
+        **MENU_STYLES.get(current, MENU_STYLES["default"]),
+    )
+
+    selected = menu.show()
+    if selected is None:
+        console.print("[yellow]Cancelled[/yellow]")
+        return
+
+    selected_style = style_names[selected]
+    config["menu_style"] = selected_style
+    save_config(config)
+    console.print(f"[green]Menu style set to:[/green] {selected_style}")
+    console.print(f"Saved to {DEFAULT_CONFIG_PATH}")
+
+
 @app.command("import")
 def import_(
     source: Path = typer.Argument(
@@ -292,6 +438,7 @@ def play(
                 title="  Select a patch to play (/ to search, ↑↓ to navigate, ESC to quit)\n",
                 search_key="/",
                 show_search_hint=True,
+                **get_menu_style(),
             )
 
             selected_index = menu.show()

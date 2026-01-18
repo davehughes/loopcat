@@ -88,17 +88,13 @@ class TestTrackWidget:
     def test_track_widget_initial_state(self, sample_track):
         """Test TrackWidget initial state values."""
         widget = TrackWidget(sample_track, 1, id="track-1")
-        assert widget._position == 0.0
-        assert widget._duration == 1.0
         assert widget._playing is False
 
     def test_track_widget_update_state(self, sample_track):
         """Test updating track widget state."""
         widget = TrackWidget(sample_track, 1, id="track-1")
-        widget.update_state(position=15.0, duration=30.0, playing=True)
+        widget.update_state(playing=True)
 
-        assert widget._position == 15.0
-        assert widget._duration == 30.0
         assert widget._playing is True
 
 

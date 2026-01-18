@@ -17,7 +17,7 @@ from loopcat.player import AudioPlayer
 
 
 class TrackWidget(Static):
-    """Widget displaying a single track with playback controls."""
+    """Widget displaying a single track status."""
 
     def __init__(
         self,
@@ -27,13 +27,11 @@ class TrackWidget(Static):
     ) -> None:
         # Build initial content first
         name = track.analysis.suggested_name if track.analysis else track.filename
-        initial = f"[bold white on dark_red] {track_number} [/] [bold]{name}[/]  [dim]⏹ STOPPED[/]\n[cyan]{'░' * 20}[/] 0.0s / 0.0s"
+        initial = f"[bold white on dark_red] {track_number} [/] [bold]{name}[/]  [dim]⏹[/]"
         super().__init__(initial, **kwargs)
         # Set instance attributes after super().__init__
         self.track = track
         self.track_number = track_number
-        self._position = 0.0
-        self._duration = 1.0
         self._playing = False
 
     def _refresh_display(self) -> None:
@@ -43,28 +41,48 @@ class TrackWidget(Static):
         key = self.track.detected_key or ""
 
         info_parts = [p for p in [role, key] if p]
-        info_str = f" ({', '.join(info_parts)})" if info_parts else ""
+        info_str = f" [dim]({', '.join(info_parts)})[/]" if info_parts else ""
 
         if self._playing:
-            status = "[bold green]▶ PLAYING[/]"
+            status = "[bold green]▶[/]"
             header = f"[bold white on dark_green] {self.track_number} [/] [bold green]{name}[/]{info_str}"
         else:
-            status = "[dim]⏹ STOPPED[/]"
+            status = "[dim]⏹[/]"
             header = f"[bold white on dark_red] {self.track_number} [/] [bold]{name}[/]{info_str}"
 
-        pct = int((self._position / self._duration * 100) if self._duration > 0 else 0)
-        bar = "█" * (pct // 5) + "░" * (20 - pct // 5)
-        time_str = f"{self._position:.1f}s / {self._duration:.1f}s"
-        bar_color = "cyan" if self._playing else "dim"
+        self.update(f"{header}  {status}")
 
-        self.update(f"{header}  {status}\n[{bar_color}]{bar}[/] {time_str}")
+    def update_state(self, playing: bool) -> None:
+        """Update the track display state."""
+        self._playing = playing
+        self._refresh_display()
+
+
+class ProgressBarWidget(Static):
+    """Widget displaying the master playback progress bar."""
+
+    def __init__(self, **kwargs) -> None:
+        super().__init__("[dim]░[/] " * 30 + " 0.0s", **kwargs)
+        self._position = 0.0
+        self._duration = 1.0
+        self._playing = False
 
     def update_state(self, position: float, duration: float, playing: bool) -> None:
-        """Update the track display state."""
+        """Update the progress bar display."""
         self._position = position
         self._duration = duration
         self._playing = playing
         self._refresh_display()
+
+    def _refresh_display(self) -> None:
+        """Render the progress bar."""
+        pct = int((self._position / self._duration * 100) if self._duration > 0 else 0)
+        filled = pct * 30 // 100
+        bar = "█" * filled + "░" * (30 - filled)
+        time_str = f"{self._position:.1f}s / {self._duration:.1f}s"
+        bar_color = "cyan" if self._playing else "dim"
+
+        self.update(f"[{bar_color}]{bar}[/] {time_str}")
 
 
 # Built-in Textual themes + base16 themes (deduplicated)
@@ -215,6 +233,13 @@ class PlayerApp(App):
         padding: 0 1;
     }
 
+    #progress-bar {
+        dock: top;
+        height: 1;
+        padding: 0 1;
+        margin-top: 1;
+    }
+
     #tracks-container {
         padding: 0 1;
     }
@@ -222,7 +247,7 @@ class PlayerApp(App):
     TrackWidget {
         padding: 0 1;
         border: solid $primary;
-        height: auto;
+        height: 1;
     }
     """
 
@@ -258,6 +283,7 @@ class PlayerApp(App):
         )
         self.player: Optional[AudioPlayer] = None
         self.track_widgets: dict[int, TrackWidget] = {}
+        self.progress_bar: Optional[ProgressBarWidget] = None
         self.loop_mode = True
 
     def compose(self) -> ComposeResult:
@@ -268,6 +294,10 @@ class PlayerApp(App):
             f"[bold]LOOPCAT[/] │ {patch_name} (#{self.patch.catalog_number}){bpm_str}",
             id="header",
         )
+
+        # Master progress bar
+        self.progress_bar = ProgressBarWidget(id="progress-bar")
+        yield self.progress_bar
 
         # Tracks
         with VerticalScroll(id="tracks-container"):
@@ -290,9 +320,15 @@ class PlayerApp(App):
 
         # Set initial stopped state for all tracks
         for track_num, widget in self.track_widgets.items():
-            info = self.player.get_track_info(track_num)
-            if info:
-                widget.update_state(0.0, info[1], False)
+            widget.update_state(False)
+
+        # Set initial progress bar state (use longest track duration)
+        max_duration = max(
+            (self.player.get_track_info(t.track_number) or (0, 0, False))[1]
+            for t in self.patch.tracks
+        ) or 1.0
+        if self.progress_bar:
+            self.progress_bar.update_state(0.0, max_duration, False)
 
         self.player.start()
 
@@ -306,10 +342,32 @@ class PlayerApp(App):
         self.call_from_thread(self._update_track_displays, positions)
 
     def _update_track_displays(self, positions: dict[int, tuple[float, float, bool]]) -> None:
-        """Update track widgets with new positions."""
+        """Update track widgets and progress bar with new positions."""
+        any_playing = False
+        max_duration = 0.0
+        current_position = 0.0
+
         for track_num, (position, duration, playing) in positions.items():
             if track_num in self.track_widgets:
-                self.track_widgets[track_num].update_state(position, duration, playing)
+                self.track_widgets[track_num].update_state(playing)
+
+            if playing:
+                any_playing = True
+                # Use the longest playing track for the progress bar
+                if duration > max_duration:
+                    max_duration = duration
+                    current_position = position
+
+        # Update master progress bar
+        if self.progress_bar:
+            if not any_playing:
+                # When stopped, show the longest track's duration
+                max_duration = max(
+                    (dur for _, dur, _ in positions.values()),
+                    default=1.0
+                )
+                current_position = 0.0
+            self.progress_bar.update_state(current_position, max_duration, any_playing)
 
     def action_toggle_all(self) -> None:
         """Toggle all tracks."""

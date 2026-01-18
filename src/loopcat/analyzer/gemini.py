@@ -128,6 +128,16 @@ def analyze_patch_with_gemini(
     except json.JSONDecodeError as e:
         raise ValueError(f"Failed to parse Gemini response as JSON: {e}\nResponse: {raw_response}")
 
+    # Handle case where Gemini returns a list instead of a dict
+    if isinstance(data, list):
+        if len(data) > 0 and isinstance(data[0], dict):
+            data = data[0]
+        else:
+            raise ValueError(f"Unexpected response format (list): {raw_response}")
+
+    if not isinstance(data, dict):
+        raise ValueError(f"Unexpected response format (expected dict): {raw_response}")
+
     # Build PatchAnalysis
     patch_data = data.get("patch", {})
     patch_analysis = PatchAnalysis(

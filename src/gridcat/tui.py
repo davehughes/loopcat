@@ -900,33 +900,23 @@ class SettingsScreen(ModalScreen[GridcatSettings | None]):
         margin-bottom: 1;
     }
 
-    .settings-section {
+    .settings-label {
+        margin-top: 1;
+        margin-bottom: 0;
+    }
+
+    #settings-dialog Select {
         margin-bottom: 1;
-        padding: 1;
-        border: solid $primary-darken-2;
+    }
+
+    #settings-dialog Input {
+        margin-bottom: 1;
     }
 
     .settings-section-title {
         text-style: bold;
-        margin-bottom: 1;
-    }
-
-    .settings-row {
-        height: 3;
-        margin-bottom: 1;
-    }
-
-    .settings-row Label {
-        width: 20;
-        padding-top: 1;
-    }
-
-    .settings-row Input {
-        width: 1fr;
-    }
-
-    .settings-row Select {
-        width: 1fr;
+        margin-top: 1;
+        color: $text-muted;
     }
 
     #settings-hint {
@@ -938,7 +928,7 @@ class SettingsScreen(ModalScreen[GridcatSettings | None]):
 
     BINDINGS = [
         Binding("escape", "cancel", "Cancel"),
-        Binding("enter", "save", "Save", priority=True),
+        Binding("ctrl+s", "save", "Save"),
     ]
 
     def __init__(self, settings: GridcatSettings) -> None:
@@ -948,51 +938,45 @@ class SettingsScreen(ModalScreen[GridcatSettings | None]):
     def compose(self) -> ComposeResult:
         from textual.widgets import Input, Select
 
-        with Container(id="settings-dialog"):
+        with Vertical(id="settings-dialog"):
             yield Static("[bold]Settings[/]", id="settings-title")
 
-            # Play mode section
-            with Container(classes="settings-section"):
-                yield Static("Note Play Mode", classes="settings-section-title")
-                with Horizontal(classes="settings-row"):
-                    yield Label("Mode:")
-                    yield Select(
-                        [("Hold (sustain)", "hold"), ("Trigger (instant)", "trigger")],
-                        value=self.settings.play_mode,
-                        id="play-mode",
-                    )
+            # Play mode
+            yield Static("Play Mode", classes="settings-label")
+            yield Select(
+                [("Hold (sustain while pressed)", "hold"), ("Trigger (instant on/off)", "trigger")],
+                value=self.settings.play_mode,
+                allow_blank=False,
+                id="play-mode",
+            )
 
             # Hold mode settings
-            with Container(classes="settings-section", id="hold-settings"):
-                yield Static("Hold Mode Timing", classes="settings-section-title")
-                with Horizontal(classes="settings-row"):
-                    yield Label("Initial delay (ms):")
-                    yield Input(
-                        str(self.settings.hold_initial_delay_ms),
-                        id="hold-initial",
-                        type="integer",
-                    )
-                with Horizontal(classes="settings-row"):
-                    yield Label("Repeat delay (ms):")
-                    yield Input(
-                        str(self.settings.hold_repeat_delay_ms),
-                        id="hold-repeat",
-                        type="integer",
-                    )
+            yield Static("── Hold Mode ──", classes="settings-section-title")
+            yield Static("Initial delay (ms)", classes="settings-label")
+            yield Input(
+                value=str(self.settings.hold_initial_delay_ms),
+                id="hold-initial",
+                type="integer",
+            )
+            yield Static("Repeat delay (ms)", classes="settings-label")
+            yield Input(
+                value=str(self.settings.hold_repeat_delay_ms),
+                id="hold-repeat",
+                type="integer",
+            )
 
             # Trigger mode settings
-            with Container(classes="settings-section", id="trigger-settings"):
-                yield Static("Trigger Mode Timing", classes="settings-section-title")
-                with Horizontal(classes="settings-row"):
-                    yield Label("Note duration (ms):")
-                    yield Input(
-                        str(self.settings.trigger_duration_ms),
-                        id="trigger-duration",
-                        type="integer",
-                    )
+            yield Static("── Trigger Mode ──", classes="settings-section-title")
+            yield Static("Note duration (ms)", classes="settings-label")
+            yield Input(
+                value=str(self.settings.trigger_duration_ms),
+                id="trigger-duration",
+                type="integer",
+            )
 
             yield Static(
-                "[dim]enter[/] save  [dim]esc[/] cancel", id="settings-hint"
+                "[dim]tab[/] next  [dim]ctrl+s[/] save  [dim]esc[/] cancel",
+                id="settings-hint",
             )
 
     def on_mount(self) -> None:
@@ -1007,6 +991,9 @@ class SettingsScreen(ModalScreen[GridcatSettings | None]):
 
         try:
             play_mode = self.query_one("#play-mode", Select).value
+            if play_mode is Select.BLANK:
+                play_mode = "hold"
+
             hold_initial = int(self.query_one("#hold-initial", Input).value or "300")
             hold_repeat = int(self.query_one("#hold-repeat", Input).value or "120")
             trigger_duration = int(

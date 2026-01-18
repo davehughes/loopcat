@@ -56,6 +56,15 @@ def main(
 
 
 @app.command()
+def help(ctx: typer.Context) -> None:
+    """Show this help message."""
+    # Get the parent context (the main app) to show its help
+    if ctx.parent:
+        console.print(ctx.parent.get_help())
+    raise typer.Exit()
+
+
+@app.command()
 def auth(
     api_key: str = typer.Option(
         None,

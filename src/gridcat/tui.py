@@ -1088,14 +1088,18 @@ class GridScreen(Screen):
         pad = self._pads[grid_key]
 
         # Timing constants (in seconds)
-        INITIAL_HOLD_TIME = 0.5  # Wait for first repeat (system's "delay until repeat")
+        INITIAL_HOLD_TIME = 0.21  # Wait for first repeat (system's "delay until repeat")
         REPEAT_HOLD_TIME = 0.12  # Wait between repeats (system's "key repeat rate")
 
         # Check if key is already held (this is a repeat)
         if grid_key in self._held_keys:
-            # Terminal only sends repeats for last key pressed, so when we get
-            # any repeat, reset timers for ALL held keys (chord support)
-            self._reset_all_hold_timers(REPEAT_HOLD_TIME)
+            # Cancel existing release timer and restart with shorter repeat interval
+            existing_timer = self._held_keys[grid_key]
+            if existing_timer:
+                existing_timer.stop()
+            self._held_keys[grid_key] = self.set_timer(
+                REPEAT_HOLD_TIME, lambda k=grid_key, p=pad: self._key_release_timeout(k, p)
+            )
             return
 
         # New key press - determine velocity and press pad
@@ -1106,18 +1110,6 @@ class GridScreen(Screen):
         self._held_keys[grid_key] = self.set_timer(
             INITIAL_HOLD_TIME, lambda k=grid_key, p=pad: self._key_release_timeout(k, p)
         )
-
-    def _reset_all_hold_timers(self, timeout: float) -> None:
-        """Reset release timers for all held keys (for chord support)."""
-        for grid_key in list(self._held_keys.keys()):
-            timer = self._held_keys[grid_key]
-            if timer:
-                timer.stop()
-            pad = self._pads.get(grid_key)
-            if pad:
-                self._held_keys[grid_key] = self.set_timer(
-                    timeout, lambda k=grid_key, p=pad: self._key_release_timeout(k, p)
-                )
 
     def _key_release_timeout(self, grid_key: str, pad: PadWidget) -> None:
         """Called when key repeat stops - key was released."""

@@ -1945,14 +1945,21 @@ class GridcatApp(App):
         register_themes(self)
 
     def on_mount(self) -> None:
-        """Load theme and push grid screen on mount."""
+        """Load theme and push initial screen on mount."""
         config_path = get_config_path("gridcat")
         theme = get_theme(config_path)
         self.theme = theme
 
-        # Push the grid screen
-        grid_screen = GridScreen(self.midi)
-        self.push_screen(grid_screen)
+        # Load saved view preference
+        settings = get_settings()
+        self.current_view = settings.view
+
+        # Push the appropriate screen
+        if self.current_view == "keyboard":
+            screen = KeyboardScreen(self.midi)
+        else:
+            screen = GridScreen(self.midi)
+        self.push_screen(screen)
 
         # Open virtual port after screen is ready
         self.call_after_refresh(self._open_virtual_port)
@@ -1979,6 +1986,7 @@ class GridcatApp(App):
         """Switch to keyboard view."""
         self.midi.all_notes_off()
         self.current_view = "keyboard"
+        self._save_view_preference()
         self.pop_screen()
         keyboard_screen = KeyboardScreen(self.midi)
         self.push_screen(keyboard_screen)
@@ -1988,10 +1996,17 @@ class GridcatApp(App):
         """Switch to grid view."""
         self.midi.all_notes_off()
         self.current_view = "grid"
+        self._save_view_preference()
         self.pop_screen()
         grid_screen = GridScreen(self.midi)
         self.push_screen(grid_screen)
         self.call_after_refresh(self._update_screen_midi_state)
+
+    def _save_view_preference(self) -> None:
+        """Save the current view to settings."""
+        settings = get_settings()
+        settings.view = self.current_view
+        save_settings(settings)
 
     def action_quit(self) -> None:
         """Quit cleanly."""

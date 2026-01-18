@@ -9,10 +9,16 @@ from cat_common import get_config_path, load_config, save_config
 # Play modes
 PlayMode = Literal["hold", "trigger"]
 
+# View modes
+ViewMode = Literal["grid", "keyboard"]
+
 
 @dataclass
 class GridcatSettings:
     """Gridcat application settings."""
+
+    # View mode: "grid" or "keyboard"
+    view: ViewMode = "grid"
 
     # Note play mode: "hold" (sustain while key held) or "trigger" (instant on/off)
     play_mode: PlayMode = "hold"
@@ -32,6 +38,7 @@ class GridcatSettings:
         settings_dict = config.get("settings", {})
 
         return cls(
+            view=settings_dict.get("view", "grid"),
             play_mode=settings_dict.get("play_mode", "hold"),
             hold_initial_delay_ms=settings_dict.get("hold_initial_delay_ms", 300),
             hold_repeat_delay_ms=settings_dict.get("hold_repeat_delay_ms", 120),

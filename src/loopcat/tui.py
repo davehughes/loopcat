@@ -27,7 +27,7 @@ class TrackWidget(Static):
     ) -> None:
         # Build initial content first
         name = track.analysis.suggested_name if track.analysis else track.filename
-        initial = f"[bold white on dark_red] {track_number} [/] [bold]{name}[/]  [dim]⏹[/]"
+        initial = f"[dim]⏹[/]  [bold white on dark_red] {track_number} [/] [bold]{name}[/]"
         super().__init__(initial, **kwargs)
         # Set instance attributes after super().__init__
         self.track = track
@@ -50,7 +50,7 @@ class TrackWidget(Static):
             status = "[dim]⏹[/]"
             header = f"[bold white on dark_red] {self.track_number} [/] [bold]{name}[/]{info_str}"
 
-        self.update(f"{header}  {status}")
+        self.update(f"{status}  {header}")
 
     def update_state(self, playing: bool) -> None:
         """Update the track display state."""
@@ -247,8 +247,8 @@ class PlayerApp(App):
 
     TrackWidget {
         padding: 0 1;
-        border: solid $primary;
         height: auto;
+        border-bottom: solid $primary;
     }
     """
 

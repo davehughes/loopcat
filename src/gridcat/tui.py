@@ -254,16 +254,23 @@ class MidiLog(Static):
                 # Fresh - bright
                 style = "bold"
             elif age < self.FADE_END:
-                # Fading
-                style = ""
+                # Fading - normal text (no style)
+                style = None
             else:
                 # Very faded
                 style = "dim"
 
-            if entry.key_label:
-                line = f"[{style}][{entry.key_label}][/] [{style}]{entry.message}[/]"
+            if style:
+                if entry.key_label:
+                    line = f"[{style}][{entry.key_label}] {entry.message}[/]"
+                else:
+                    line = f"[{style}]{entry.message}[/]"
             else:
-                line = f"[{style}]{entry.message}[/]"
+                # No style - plain text
+                if entry.key_label:
+                    line = f"[{entry.key_label}] {entry.message}"
+                else:
+                    line = entry.message
             lines.append(line)
 
         return "\n".join(lines)

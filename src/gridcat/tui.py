@@ -46,23 +46,43 @@ KEY_LABELS = [
 # Note names for display
 NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
 
-# Piano keyboard layout - maps computer keys to semitone offsets from C
-# White keys (bottom row): C D E F G A B C D E F G A B C
-PIANO_WHITE_KEYS = ["a", "s", "d", "f", "g", "h", "j", "k", "l", "semicolon", "apostrophe"]
-PIANO_WHITE_OFFSETS = [0, 2, 4, 5, 7, 9, 11, 12, 14, 16, 17]  # Semitones from C
-PIANO_WHITE_LABELS = ["A", "S", "D", "F", "G", "H", "J", "K", "L", ";", "'"]
+# Piano keyboard layout - two sections for continuous range
+# Upper section on screen (Q-P/1-0) = LOWER notes
+# Lower section on screen (Z-,/S-J) = HIGHER notes, continues from upper
 
-# Black keys (top row): C# D# F# G# A# C# D# F# G# A#
-PIANO_BLACK_KEYS = ["w", "e", "t", "y", "u", "o", "p"]
-PIANO_BLACK_OFFSETS = [1, 3, 6, 8, 10, 13, 15]  # Semitones from C
-PIANO_BLACK_LABELS = ["W", "E", "T", "Y", "U", "O", "P"]
+# Upper section on screen = lower pitched notes (QWERTY = white, numbers = black)
+UPPER_WHITE_KEYS = ["q", "w", "e", "r", "t", "y", "u", "i", "o", "p"]
+UPPER_WHITE_OFFSETS = [0, 2, 4, 5, 7, 9, 11, 12, 14, 16]  # C D E F G A B C D E
+UPPER_WHITE_LABELS = ["Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P"]
 
-# Combined for easy lookup
+UPPER_BLACK_KEYS = ["2", "3", "5", "6", "7", "9", "0"]
+UPPER_BLACK_OFFSETS = [1, 3, 6, 8, 10, 13, 15]  # C# D# F# G# A# C# D#
+UPPER_BLACK_LABELS = ["2", "3", "5", "6", "7", "9", "0"]
+# Gap indices for upper section: before index 2 (F#) and 5 (second C#)
+UPPER_BLACK_GAPS = {2, 5}
+
+# Lower section on screen = higher pitched notes (Z row = white, home row = black)
+# Starts at F (offset 17) - continues from upper section's E without overlap
+LOWER_WHITE_KEYS = ["z", "x", "c", "v", "b", "n", "m", "comma"]
+LOWER_WHITE_OFFSETS = [17, 19, 21, 23, 24, 26, 28, 29]  # F G A B C D E F
+LOWER_WHITE_LABELS = ["Z", "X", "C", "V", "B", "N", "M", ","]
+
+LOWER_BLACK_KEYS = ["s", "d", "f", "h", "j"]
+LOWER_BLACK_OFFSETS = [18, 20, 22, 25, 27]  # F# G# A# C# D#
+LOWER_BLACK_LABELS = ["S", "D", "F", "H", "J"]
+# Gap indices for lower section: before index 3 (C# after B-C gap)
+LOWER_BLACK_GAPS = {3}
+
+# Combined for easy lookup - section is now just for identification
 PIANO_KEY_MAP = {}
-for i, key in enumerate(PIANO_WHITE_KEYS):
-    PIANO_KEY_MAP[key] = ("white", PIANO_WHITE_OFFSETS[i], PIANO_WHITE_LABELS[i])
-for i, key in enumerate(PIANO_BLACK_KEYS):
-    PIANO_KEY_MAP[key] = ("black", PIANO_BLACK_OFFSETS[i], PIANO_BLACK_LABELS[i])
+for i, key in enumerate(UPPER_WHITE_KEYS):
+    PIANO_KEY_MAP[key] = ("upper", "white", UPPER_WHITE_OFFSETS[i], UPPER_WHITE_LABELS[i])
+for i, key in enumerate(UPPER_BLACK_KEYS):
+    PIANO_KEY_MAP[key] = ("upper", "black", UPPER_BLACK_OFFSETS[i], UPPER_BLACK_LABELS[i])
+for i, key in enumerate(LOWER_WHITE_KEYS):
+    PIANO_KEY_MAP[key] = ("lower", "white", LOWER_WHITE_OFFSETS[i], LOWER_WHITE_LABELS[i])
+for i, key in enumerate(LOWER_BLACK_KEYS):
+    PIANO_KEY_MAP[key] = ("lower", "black", LOWER_BLACK_OFFSETS[i], LOWER_BLACK_LABELS[i])
 
 
 def note_to_name(note: int) -> str:
@@ -245,12 +265,13 @@ class PianoKey(Static):
     pressed: reactive[bool] = reactive(False)
 
     def __init__(
-        self, key_label: str, note: int, is_black: bool = False, **kwargs
+        self, key_label: str, note: int, is_black: bool = False, section: str = "lower", **kwargs
     ) -> None:
         super().__init__(**kwargs)
         self.key_label = key_label
         self.note = note
         self.is_black = is_black
+        self.section = section
         if is_black:
             self.add_class("black")
         else:
@@ -353,6 +374,18 @@ class WhiteKeyLabels(Horizontal):
         width: 5;
         text-align: center;
         color: $text-muted;
+    }
+    """
+
+
+class KeyboardSection(Vertical):
+    """A single piano section (upper or lower)."""
+
+    DEFAULT_CSS = """
+    KeyboardSection {
+        height: auto;
+        width: auto;
+        margin-bottom: 1;
     }
     """
 
@@ -1670,7 +1703,9 @@ class KeyboardScreen(Screen):
         Binding("escape", "quit", "Quit"),
     ]
 
-    octave: reactive[int] = reactive(3)
+    # Base semitone: MIDI note number of the lowest key (C or F positions)
+    # Valid positions: 0=C, 5=F, 12=C, 17=F, 24=C, 29=F, 36=C, 41=F, 48=C, etc.
+    base_semitone: reactive[int] = reactive(48)  # C3
     midi_output: reactive[str] = reactive("")
     midi_channel: reactive[int] = reactive(0)
     is_virtual_port: reactive[bool] = reactive(False)
@@ -1685,51 +1720,95 @@ class KeyboardScreen(Screen):
         yield StatusBar(self._make_status())
         with MainContent():
             with KeyboardContainer():
-                # Black key labels (above keys) - must match key spacing
-                with BlackKeyLabels():
-                    yield Static("W", classes="label")
-                    yield Static("", classes="gap")
-                    yield Static("E", classes="label")
-                    yield Static("", classes="wide-gap")
-                    yield Static("T", classes="label")
-                    yield Static("", classes="gap")
-                    yield Static("Y", classes="label")
-                    yield Static("", classes="gap")
-                    yield Static("U", classes="label")
-                    yield Static("", classes="wide-gap")
-                    yield Static("O", classes="label")
-                    yield Static("", classes="gap")
-                    yield Static("P", classes="label")
+                # Upper section (number row = black, QWERTY row = white) - lower notes
+                with KeyboardSection():
+                    # Black key labels
+                    with BlackKeyLabels():
+                        yield Static("2", classes="label")
+                        yield Static("", classes="gap")
+                        yield Static("3", classes="label")
+                        yield Static("", classes="wide-gap")
+                        yield Static("5", classes="label")
+                        yield Static("", classes="gap")
+                        yield Static("6", classes="label")
+                        yield Static("", classes="gap")
+                        yield Static("7", classes="label")
+                        yield Static("", classes="wide-gap")
+                        yield Static("9", classes="label")
+                        yield Static("", classes="gap")
+                        yield Static("0", classes="label")
 
-                # Black keys row
-                with BlackKeyRow():
-                    for i, (key, offset, label) in enumerate(zip(
-                        PIANO_BLACK_KEYS, PIANO_BLACK_OFFSETS, PIANO_BLACK_LABELS
-                    )):
-                        # Add wide gap before F# (index 2) and before second C# (index 5)
-                        if i == 2 or i == 5:
-                            yield Static("", classes="wide-gap")
-                        elif i > 0:
-                            yield Static("", classes="gap")
-                        note = self._offset_to_note(offset)
-                        piano_key = PianoKey(label, note, is_black=True, id=f"key-{key}")
-                        self._keys[key] = piano_key
-                        yield piano_key
+                    # Black keys row
+                    with BlackKeyRow():
+                        for i, (key, offset, label) in enumerate(zip(
+                            UPPER_BLACK_KEYS, UPPER_BLACK_OFFSETS, UPPER_BLACK_LABELS
+                        )):
+                            if i in UPPER_BLACK_GAPS:
+                                yield Static("", classes="wide-gap")
+                            elif i > 0:
+                                yield Static("", classes="gap")
+                            note = self._offset_to_note(offset)
+                            piano_key = PianoKey(label, note, is_black=True, section="upper", id=f"key-{key}")
+                            self._keys[key] = piano_key
+                            yield piano_key
 
-                # White keys row
-                with WhiteKeyRow():
-                    for key, offset, label in zip(
-                        PIANO_WHITE_KEYS, PIANO_WHITE_OFFSETS, PIANO_WHITE_LABELS
-                    ):
-                        note = self._offset_to_note(offset)
-                        piano_key = PianoKey(label, note, is_black=False, id=f"key-{key}")
-                        self._keys[key] = piano_key
-                        yield piano_key
+                    # White keys row
+                    with WhiteKeyRow():
+                        for key, offset, label in zip(
+                            UPPER_WHITE_KEYS, UPPER_WHITE_OFFSETS, UPPER_WHITE_LABELS
+                        ):
+                            note = self._offset_to_note(offset)
+                            piano_key = PianoKey(label, note, is_black=False, section="upper", id=f"key-{key}")
+                            self._keys[key] = piano_key
+                            yield piano_key
 
-                # White key labels (below keys)
-                with WhiteKeyLabels():
-                    for label in PIANO_WHITE_LABELS:
-                        yield Static(label, classes="label")
+                    # White key labels
+                    with WhiteKeyLabels():
+                        for label in UPPER_WHITE_LABELS:
+                            yield Static(label, classes="label")
+
+                # Lower section (home row = black, Z row = white) - higher notes
+                with KeyboardSection():
+                    # Black key labels - gap before index 3 (C# after B-C)
+                    with BlackKeyLabels():
+                        yield Static("S", classes="label")
+                        yield Static("", classes="gap")
+                        yield Static("D", classes="label")
+                        yield Static("", classes="gap")
+                        yield Static("F", classes="label")
+                        yield Static("", classes="wide-gap")
+                        yield Static("H", classes="label")
+                        yield Static("", classes="gap")
+                        yield Static("J", classes="label")
+
+                    # Black keys row - gap before index 3 (C# after B-C)
+                    with BlackKeyRow():
+                        for i, (key, offset, label) in enumerate(zip(
+                            LOWER_BLACK_KEYS, LOWER_BLACK_OFFSETS, LOWER_BLACK_LABELS
+                        )):
+                            if i in LOWER_BLACK_GAPS:
+                                yield Static("", classes="wide-gap")
+                            elif i > 0:
+                                yield Static("", classes="gap")
+                            note = self._offset_to_note(offset)
+                            piano_key = PianoKey(label, note, is_black=True, section="lower", id=f"key-{key}")
+                            self._keys[key] = piano_key
+                            yield piano_key
+
+                    # White keys row
+                    with WhiteKeyRow():
+                        for key, offset, label in zip(
+                            LOWER_WHITE_KEYS, LOWER_WHITE_OFFSETS, LOWER_WHITE_LABELS
+                        ):
+                            note = self._offset_to_note(offset)
+                            piano_key = PianoKey(label, note, is_black=False, section="lower", id=f"key-{key}")
+                            self._keys[key] = piano_key
+                            yield piano_key
+
+                    # White key labels
+                    with WhiteKeyLabels():
+                        for label in LOWER_WHITE_LABELS:
+                            yield Static(label, classes="label")
 
             yield SidePanel()
         yield KeyboardFooter()
@@ -1744,9 +1823,12 @@ class KeyboardScreen(Screen):
         else:
             output = "[dim]None[/]"
 
+        # Show the base note (C or F with octave)
+        base_note = note_to_name(self.base_semitone)
+
         return (
             f"[bold]GRIDCAT[/] [dim]keyboard[/]  │  "
-            f"Oct: {self.octave}  │  "
+            f"Base: {base_note}  │  "
             f"Ch: {self.midi_channel + 1}  │  "
             f"Out: {output}"
         )
@@ -1760,11 +1842,11 @@ class KeyboardScreen(Screen):
 
     def _offset_to_note(self, offset: int) -> int:
         """Convert semitone offset to MIDI note."""
-        return (self.octave + 1) * 12 + offset
+        return self.base_semitone + offset
 
     def _update_key_notes(self) -> None:
-        """Update all key notes after octave change."""
-        for key, (_, offset, _) in PIANO_KEY_MAP.items():
+        """Update all key notes after base semitone change."""
+        for key, (_, _, offset, _) in PIANO_KEY_MAP.items():
             if key in self._keys:
                 self._keys[key].note = self._offset_to_note(offset)
                 self._keys[key].refresh()
@@ -1777,7 +1859,7 @@ class KeyboardScreen(Screen):
         except Exception:
             pass
 
-    def watch_octave(self, octave: int) -> None:
+    def watch_base_semitone(self, base_semitone: int) -> None:
         self._update_key_notes()
         self._update_status()
 
@@ -1805,10 +1887,8 @@ class KeyboardScreen(Screen):
             base_key = key[6:]
 
         # Normalize special keys
-        if base_key == ";":
-            base_key = "semicolon"
-        elif base_key == "'":
-            base_key = "apostrophe"
+        if base_key == ",":
+            base_key = "comma"
 
         if base_key not in PIANO_KEY_MAP:
             return
@@ -1877,12 +1957,16 @@ class KeyboardScreen(Screen):
             self._release_key(piano_key)
 
     def action_octave_up(self) -> None:
-        if self.octave < 8:
-            self.octave += 1
+        """Shift up by one octave."""
+        new_base = self.base_semitone + 12
+        if new_base <= 108:  # Keep highest note under 127
+            self.base_semitone = new_base
 
     def action_octave_down(self) -> None:
-        if self.octave > -1:
-            self.octave -= 1
+        """Shift down by one octave."""
+        new_base = self.base_semitone - 12
+        if new_base >= 0:
+            self.base_semitone = new_base
 
     def action_select_output(self) -> None:
         outputs = self.midi.list_outputs()
@@ -1975,9 +2059,13 @@ class KeyboardHelpScreen(HelpScreenBase):
     """Help screen for keyboard view."""
 
     TITLE = "Keyboard Help"
-    HELP_TEXT = """[bold]Piano Keys[/]
-[dim]A S D F G H J K L ; '[/]  White keys (C to F)
-[dim]W E   T Y U   O P[/]     Black keys (C# to D#)
+    HELP_TEXT = """[bold]Upper Row (lower notes)[/]
+[dim]Q W E R T Y U I O P[/]   White keys (C to E)
+[dim]2 3   5 6 7   9 0[/]     Black keys
+
+[bold]Lower Row (higher notes)[/]
+[dim]Z X C V B N M ,[/]       White keys (F to F)
+[dim]S D F   H J[/]           Black keys
 
 [bold]Modifiers[/]
 [dim]Shift + key[/]         Soft velocity (40)

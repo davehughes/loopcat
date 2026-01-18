@@ -23,6 +23,7 @@ from cat_common import (
 )
 
 from gridcat.midi import MidiEngine, DEFAULT_PORT_NAME
+from gridcat.settings import get_settings, save_settings, GridcatSettings
 
 
 # Key-to-note mapping: 4 rows of 8 keys each
@@ -418,6 +419,7 @@ COMMANDS = [
     ("edit", "Edit selected pad"),
     ("output", "Select MIDI output"),
     ("channel", "Select MIDI channel (1-16)"),
+    ("settings", "Note play mode & timing"),
     ("theme", "Change color theme"),
     ("help", "Show keyboard shortcuts"),
     ("quit", "Exit gridcat"),
@@ -876,6 +878,158 @@ class PadEditorScreen(ModalScreen[PadConfig | None]):
             pass
 
 
+class SettingsScreen(ModalScreen[GridcatSettings | None]):
+    """Modal for editing gridcat settings."""
+
+    CSS = """
+    SettingsScreen {
+        align: center middle;
+    }
+
+    #settings-dialog {
+        width: 55;
+        height: auto;
+        border: solid $primary;
+        background: $surface;
+        padding: 1 2;
+    }
+
+    #settings-title {
+        text-align: center;
+        text-style: bold;
+        margin-bottom: 1;
+    }
+
+    .settings-section {
+        margin-bottom: 1;
+        padding: 1;
+        border: solid $primary-darken-2;
+    }
+
+    .settings-section-title {
+        text-style: bold;
+        margin-bottom: 1;
+    }
+
+    .settings-row {
+        height: 3;
+        margin-bottom: 1;
+    }
+
+    .settings-row Label {
+        width: 20;
+        padding-top: 1;
+    }
+
+    .settings-row Input {
+        width: 1fr;
+    }
+
+    .settings-row Select {
+        width: 1fr;
+    }
+
+    #settings-hint {
+        text-align: center;
+        color: $text-muted;
+        margin-top: 1;
+    }
+    """
+
+    BINDINGS = [
+        Binding("escape", "cancel", "Cancel"),
+        Binding("enter", "save", "Save", priority=True),
+    ]
+
+    def __init__(self, settings: GridcatSettings) -> None:
+        super().__init__()
+        self.settings = settings
+
+    def compose(self) -> ComposeResult:
+        from textual.widgets import Input, Select
+
+        with Container(id="settings-dialog"):
+            yield Static("[bold]Settings[/]", id="settings-title")
+
+            # Play mode section
+            with Container(classes="settings-section"):
+                yield Static("Note Play Mode", classes="settings-section-title")
+                with Horizontal(classes="settings-row"):
+                    yield Label("Mode:")
+                    yield Select(
+                        [("Hold (sustain)", "hold"), ("Trigger (instant)", "trigger")],
+                        value=self.settings.play_mode,
+                        id="play-mode",
+                    )
+
+            # Hold mode settings
+            with Container(classes="settings-section", id="hold-settings"):
+                yield Static("Hold Mode Timing", classes="settings-section-title")
+                with Horizontal(classes="settings-row"):
+                    yield Label("Initial delay (ms):")
+                    yield Input(
+                        str(self.settings.hold_initial_delay_ms),
+                        id="hold-initial",
+                        type="integer",
+                    )
+                with Horizontal(classes="settings-row"):
+                    yield Label("Repeat delay (ms):")
+                    yield Input(
+                        str(self.settings.hold_repeat_delay_ms),
+                        id="hold-repeat",
+                        type="integer",
+                    )
+
+            # Trigger mode settings
+            with Container(classes="settings-section", id="trigger-settings"):
+                yield Static("Trigger Mode Timing", classes="settings-section-title")
+                with Horizontal(classes="settings-row"):
+                    yield Label("Note duration (ms):")
+                    yield Input(
+                        str(self.settings.trigger_duration_ms),
+                        id="trigger-duration",
+                        type="integer",
+                    )
+
+            yield Static(
+                "[dim]enter[/] save  [dim]esc[/] cancel", id="settings-hint"
+            )
+
+    def on_mount(self) -> None:
+        self.query_one("#play-mode").focus()
+
+    def action_cancel(self) -> None:
+        self.dismiss(None)
+
+    def action_save(self) -> None:
+        """Save settings."""
+        from textual.widgets import Input, Select
+
+        try:
+            play_mode = self.query_one("#play-mode", Select).value
+            hold_initial = int(self.query_one("#hold-initial", Input).value or "300")
+            hold_repeat = int(self.query_one("#hold-repeat", Input).value or "120")
+            trigger_duration = int(
+                self.query_one("#trigger-duration", Input).value or "100"
+            )
+
+            # Clamp values to reasonable ranges
+            hold_initial = max(50, min(1000, hold_initial))
+            hold_repeat = max(20, min(500, hold_repeat))
+            trigger_duration = max(10, min(1000, trigger_duration))
+
+            new_settings = GridcatSettings(
+                play_mode=play_mode,
+                hold_initial_delay_ms=hold_initial,
+                hold_repeat_delay_ms=hold_repeat,
+                trigger_duration_ms=trigger_duration,
+            )
+
+            self.dismiss(new_settings)
+        except ValueError:
+            pass
+
+
 class GridScreen(Screen):
     """Main grid screen."""
 
@@ -1052,7 +1206,7 @@ class GridScreen(Screen):
         self._update_status()
 
     def on_key(self, event) -> None:
-        """Handle key press for grid pads with hold detection."""
+        """Handle key press for grid pads."""
         key = event.key
 
         # Check for modifier keys in key string
@@ -1086,33 +1240,58 @@ class GridScreen(Screen):
             return
 
         pad = self._pads[grid_key]
+        settings = get_settings()
 
-        # Timing constants (in seconds)
-        INITIAL_HOLD_TIME = 0.21  # Wait for first repeat (system's "delay until repeat")
-        REPEAT_HOLD_TIME = 0.12  # Wait between repeats (system's "key repeat rate")
+        if settings.play_mode == "trigger":
+            # Trigger mode: instant note on/off, ignore repeats
+            if grid_key in self._held_keys:
+                return  # Ignore key repeat
 
-        # Check if key is already held (this is a repeat)
-        if grid_key in self._held_keys:
-            # Cancel existing release timer and restart with shorter repeat interval
-            existing_timer = self._held_keys[grid_key]
-            if existing_timer:
-                existing_timer.stop()
-            self._held_keys[grid_key] = self.set_timer(
-                REPEAT_HOLD_TIME, lambda k=grid_key, p=pad: self._key_release_timeout(k, p)
+            velocity = 40 if has_shift else 100
+            self._press_pad(pad, velocity)
+            self._held_keys[grid_key] = True  # Mark as held to ignore repeats
+
+            # Schedule note off after configured duration
+            duration = settings.trigger_duration_ms / 1000.0
+            self.set_timer(
+                duration,
+                lambda k=grid_key, p=pad: self._trigger_release(k, p),
             )
-            return
+        else:
+            # Hold mode: sustain while key is held
+            initial_delay = settings.hold_initial_delay_ms / 1000.0
+            repeat_delay = settings.hold_repeat_delay_ms / 1000.0
 
-        # New key press - determine velocity and press pad
-        velocity = 40 if has_shift else 100
-        self._press_pad(pad, velocity)
+            # Check if key is already held (this is a repeat)
+            if grid_key in self._held_keys:
+                # Cancel existing release timer and restart with shorter repeat interval
+                existing_timer = self._held_keys[grid_key]
+                if existing_timer and hasattr(existing_timer, "stop"):
+                    existing_timer.stop()
+                self._held_keys[grid_key] = self.set_timer(
+                    repeat_delay,
+                    lambda k=grid_key, p=pad: self._key_release_timeout(k, p),
+                )
+                return
 
-        # Start release detection timer with longer initial delay
-        self._held_keys[grid_key] = self.set_timer(
-            INITIAL_HOLD_TIME, lambda k=grid_key, p=pad: self._key_release_timeout(k, p)
-        )
+            # New key press - determine velocity and press pad
+            velocity = 40 if has_shift else 100
+            self._press_pad(pad, velocity)
+
+            # Start release detection timer with longer initial delay
+            self._held_keys[grid_key] = self.set_timer(
+                initial_delay,
+                lambda k=grid_key, p=pad: self._key_release_timeout(k, p),
+            )
+
+    def _trigger_release(self, grid_key: str, pad: PadWidget) -> None:
+        """Called after trigger duration - release the note."""
+        if grid_key in self._held_keys:
+            del self._held_keys[grid_key]
+            self._release_pad(pad)
 
     def _key_release_timeout(self, grid_key: str, pad: PadWidget) -> None:
-        """Called when key repeat stops - key was released."""
+        """Called when key repeat stops (hold mode) - key was released."""
         if grid_key in self._held_keys:
             del self._held_keys[grid_key]
             self._release_pad(pad)
@@ -1267,6 +1446,8 @@ class GridScreen(Screen):
                 self.action_select_output()
             elif command == "channel":
                 self.action_select_channel()
+            elif command == "settings":
+                self.action_settings()
             elif command == "theme":
                 self.action_select_theme()
             elif command == "help":
@@ -1275,6 +1456,16 @@ class GridScreen(Screen):
                 self.action_quit()
 
         self.app.push_screen(CommandPalette(), handle_command)
+
+    def action_settings(self) -> None:
+        """Open settings dialog."""
+        current_settings = get_settings()
+
+        def handle_settings(new_settings: GridcatSettings | None) -> None:
+            if new_settings:
+                save_settings(new_settings)
+
+        self.app.push_screen(SettingsScreen(current_settings), handle_settings)
 
     def action_show_help(self) -> None:
         """Show help screen."""

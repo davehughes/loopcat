@@ -79,43 +79,116 @@ def auth(
 
 
 # Import themes from tui.py to stay in sync
-from loopcat.tui import THEMES
+from loopcat.tui import THEMES, BASE16_THEMES
 
-# Menu color presets for simple-term-menu (limited to 8 basic colors)
-MENU_STYLES = {
-    "default": {
-        "menu_cursor_style": ("fg_cyan", "bold"),
-        "menu_highlight_style": ("fg_black", "bg_cyan"),
-    },
-    "yellow": {
-        "menu_cursor_style": ("fg_yellow", "bold"),
-        "menu_highlight_style": ("fg_black", "bg_yellow"),
-    },
-    "green": {
-        "menu_cursor_style": ("fg_green", "bold"),
-        "menu_highlight_style": ("fg_black", "bg_green"),
-    },
-    "purple": {
-        "menu_cursor_style": ("fg_purple", "bold"),
-        "menu_highlight_style": ("fg_black", "bg_purple"),
-    },
-    "red": {
-        "menu_cursor_style": ("fg_red", "bold"),
-        "menu_highlight_style": ("fg_black", "bg_red"),
-    },
-    "blue": {
-        "menu_cursor_style": ("fg_blue", "bold"),
-        "menu_highlight_style": ("fg_black", "bg_blue"),
-    },
+# Terminal colors available in simple-term-menu
+# Using typical bright terminal colors (not full saturation gray which pulls everything)
+TERM_COLORS = {
+    "red": (205, 49, 49),
+    "green": (13, 188, 121),
+    "yellow": (229, 229, 16),
+    "blue": (36, 114, 200),
+    "purple": (188, 63, 188),
+    "cyan": (17, 168, 205),
 }
 
 
+def hex_to_rgb(hex_color: str) -> tuple[int, int, int]:
+    """Convert hex color to RGB tuple."""
+    hex_color = hex_color.lstrip("#")
+    return tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
+
+
+def closest_term_color(hex_color: str) -> str:
+    """Find the closest terminal color to a hex color."""
+    try:
+        r, g, b = hex_to_rgb(hex_color)
+    except (ValueError, IndexError):
+        return "cyan"  # Default fallback
+
+    min_dist = float("inf")
+    closest = "cyan"
+
+    for name, (tr, tg, tb) in TERM_COLORS.items():
+        # Weighted Euclidean distance (human eye is more sensitive to green)
+        dist = (2 * (r - tr) ** 2) + (4 * (g - tg) ** 2) + (3 * (b - tb) ** 2)
+        if dist < min_dist:
+            min_dist = dist
+            closest = name
+
+    return closest
+
+
+def get_menu_style_from_theme() -> dict:
+    """Get menu style based on current TUI theme."""
+    from loopcat.config import get_theme
+
+    theme_name = get_theme()
+
+    # Try to find the theme's primary color
+    primary_color = None
+
+    # Check base16 themes first
+    for theme in BASE16_THEMES:
+        if theme.name == theme_name:
+            primary_color = theme.primary
+            break
+
+    # Built-in theme color mappings (approximate)
+    builtin_primaries = {
+        "textual-dark": "#00ff00",
+        "textual-light": "#004400",
+        "nord": "#88c0d0",
+        "gruvbox": "#fabd2f",
+        "dracula": "#bd93f9",
+        "tokyo-night": "#7aa2f7",
+        "monokai": "#a6e22e",
+        "catppuccin-mocha": "#cba6f7",
+        "catppuccin-latte": "#8839ef",
+        "solarized-dark": "#268bd2",
+        "solarized-light": "#268bd2",
+        "rose-pine": "#c4a7e7",
+        "rose-pine-moon": "#c4a7e7",
+        "rose-pine-dawn": "#907aa9",
+        "atom-one-dark": "#61afef",
+        "atom-one-light": "#4078f2",
+        "flexoki": "#ce5d97",
+        "textual-ansi": "#00ffff",
+    }
+
+    if primary_color is None:
+        primary_color = builtin_primaries.get(theme_name, "#00ffff")
+
+    color = closest_term_color(primary_color)
+
+    return {
+        "menu_cursor_style": (f"fg_{color}", "bold"),
+        "menu_highlight_style": ("fg_black", f"bg_{color}"),
+    }
+
+
 def get_menu_style() -> dict:
-    """Get menu style kwargs based on config."""
+    """Get menu style kwargs - uses theme colors or manual override."""
     from loopcat.config import load_config
     config = load_config()
-    style_name = config.get("menu_style", "default")
-    return MENU_STYLES.get(style_name, MENU_STYLES["default"])
+
+    # Check for manual override first
+    if "menu_style" in config:
+        style_name = config["menu_style"]
+        # Manual color presets
+        presets = {
+            "cyan": {"menu_cursor_style": ("fg_cyan", "bold"), "menu_highlight_style": ("fg_black", "bg_cyan")},
+            "yellow": {"menu_cursor_style": ("fg_yellow", "bold"), "menu_highlight_style": ("fg_black", "bg_yellow")},
+            "green": {"menu_cursor_style": ("fg_green", "bold"), "menu_highlight_style": ("fg_black", "bg_green")},
+            "purple": {"menu_cursor_style": ("fg_purple", "bold"), "menu_highlight_style": ("fg_black", "bg_purple")},
+            "red": {"menu_cursor_style": ("fg_red", "bold"), "menu_highlight_style": ("fg_black", "bg_red")},
+            "blue": {"menu_cursor_style": ("fg_blue", "bold"), "menu_highlight_style": ("fg_black", "bg_blue")},
+        }
+        if style_name in presets:
+            return presets[style_name]
+
+    # Default: derive from current theme
+    return get_menu_style_from_theme()
 
 
 @app.command()
@@ -168,48 +241,63 @@ def theme(
 def menu_style(
     style: Optional[str] = typer.Argument(
         None,
-        help="Menu style to set. If omitted, shows an interactive picker.",
+        help="Menu style: 'auto' (match theme), or a color (cyan, yellow, green, purple, red, blue).",
     ),
 ) -> None:
     """Set the terminal menu color style."""
     from simple_term_menu import TerminalMenu
 
-    from loopcat.config import DEFAULT_CONFIG_PATH, load_config, save_config
+    from loopcat.config import DEFAULT_CONFIG_PATH, get_theme, load_config, save_config
 
     config = load_config()
-    current = config.get("menu_style", "default")
+    current = config.get("menu_style", "auto")
+    available = ["auto", "cyan", "yellow", "green", "purple", "red", "blue"]
 
     if style:
         # Direct set
-        if style not in MENU_STYLES:
+        if style not in available:
             console.print(f"[red]Error:[/red] Unknown style '{style}'")
-            console.print(f"Available: {', '.join(MENU_STYLES.keys())}")
+            console.print(f"Available: {', '.join(available)}")
             raise typer.Exit(1)
-        config["menu_style"] = style
+        if style == "auto":
+            # Remove override to use theme-derived colors
+            config.pop("menu_style", None)
+        else:
+            config["menu_style"] = style
         save_config(config)
         console.print(f"[green]Menu style set to:[/green] {style}")
         return
 
+    # Get current theme info for auto preview
+    theme_name = get_theme()
+    auto_style = get_menu_style_from_theme()
+    auto_color = auto_style["menu_cursor_style"][0].replace("fg_", "")
+
     # Show preview of all styles
     console.print("\n  [bold]Menu Style Preview:[/bold]\n")
-    for name in MENU_STYLES:
-        # Map simple-term-menu colors to Rich colors
-        color = name if name != "default" else "cyan"
+    console.print(f"  [dim]Current theme: {theme_name}[/dim]\n")
+
+    for name in available:
+        if name == "auto":
+            color = auto_color
+            label = f"auto ({color})"
+        else:
+            color = name
+            label = name
         marker = "●" if name == current else " "
-        console.print(f"  {marker} [{color}]{name:10}[/] │ [black on {color}] Selected Item [/] [dim]unselected[/]")
+        console.print(f"  {marker} [{color}]{label:16}[/] │ [black on {color}] Selected Item [/] [dim]unselected[/]")
     console.print()
 
     # Interactive picker
-    style_names = list(MENU_STYLES.keys())
-    current_index = style_names.index(current) if current in style_names else 0
+    current_index = available.index(current) if current in available else 0
 
-    menu_entries = [f"{'● ' if s == current else '  '}{s}" for s in style_names]
+    menu_entries = [f"{'● ' if s == current else '  '}{s}" for s in available]
 
     menu = TerminalMenu(
         menu_entries,
         title="  Select a menu style:\n",
         cursor_index=current_index,
-        **MENU_STYLES.get(current, MENU_STYLES["default"]),
+        **get_menu_style(),
     )
 
     selected = menu.show()
@@ -217,8 +305,11 @@ def menu_style(
         console.print("[yellow]Cancelled[/yellow]")
         return
 
-    selected_style = style_names[selected]
-    config["menu_style"] = selected_style
+    selected_style = available[selected]
+    if selected_style == "auto":
+        config.pop("menu_style", None)
+    else:
+        config["menu_style"] = selected_style
     save_config(config)
     console.print(f"[green]Menu style set to:[/green] {selected_style}")
     console.print(f"Saved to {DEFAULT_CONFIG_PATH}")

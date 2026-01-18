@@ -489,3 +489,80 @@ class Database:
             detected_key=row["detected_key"],
             analysis=analysis,
         )
+
+    def get_stats(self) -> dict:
+        """Get catalog statistics.
+
+        Returns:
+            Dictionary with stats including:
+            - patch_count: total patches
+            - track_count: total tracks
+            - total_duration_seconds: sum of all track durations
+            - analyzed_count: patches with analysis
+            - converted_count: tracks with MP3
+            - styles: dict of style -> count
+            - energy_distribution: dict of level -> count
+            - bpm_min, bpm_max, bpm_avg: BPM statistics
+        """
+        with self._connect() as conn:
+            # Basic counts
+            patch_count = conn.execute("SELECT COUNT(*) FROM patches").fetchone()[0]
+            track_count = conn.execute("SELECT COUNT(*) FROM tracks").fetchone()[0]
+            analyzed_count = conn.execute(
+                "SELECT COUNT(*) FROM patches WHERE analyzed_at IS NOT NULL"
+            ).fetchone()[0]
+            converted_count = conn.execute(
+                "SELECT COUNT(*) FROM tracks WHERE mp3_path IS NOT NULL"
+            ).fetchone()[0]
+
+            # Total duration
+            total_duration = conn.execute(
+                "SELECT COALESCE(SUM(duration_seconds), 0) FROM tracks"
+            ).fetchone()[0]
+
+            # BPM stats
+            bpm_row = conn.execute(
+                """
+                SELECT MIN(bpm), MAX(bpm), AVG(bpm)
+                FROM tracks WHERE bpm IS NOT NULL
+                """
+            ).fetchone()
+            bpm_min = bpm_row[0]
+            bpm_max = bpm_row[1]
+            bpm_avg = bpm_row[2]
+
+            # Style distribution
+            styles: dict[str, int] = {}
+            rows = conn.execute(
+                "SELECT musical_style FROM patches WHERE musical_style IS NOT NULL AND musical_style != ''"
+            ).fetchall()
+            for row in rows:
+                style = row[0].lower()
+                styles[style] = styles.get(style, 0) + 1
+
+            # Energy distribution (group into low/medium/high)
+            energy_dist: dict[str, int] = {"low": 0, "medium": 0, "high": 0}
+            rows = conn.execute(
+                "SELECT energy_level FROM patches WHERE energy_level IS NOT NULL"
+            ).fetchall()
+            for row in rows:
+                level = row[0]
+                if level <= 3:
+                    energy_dist["low"] += 1
+                elif level <= 6:
+                    energy_dist["medium"] += 1
+                else:
+                    energy_dist["high"] += 1
+
+            return {
+                "patch_count": patch_count,
+                "track_count": track_count,
+                "total_duration_seconds": total_duration,
+                "analyzed_count": analyzed_count,
+                "converted_count": converted_count,
+                "styles": styles,
+                "energy_distribution": energy_dist,
+                "bpm_min": bpm_min,
+                "bpm_max": bpm_max,
+                "bpm_avg": bpm_avg,
+            }

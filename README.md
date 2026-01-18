@@ -123,6 +123,22 @@ loopcat search "ambient pad"
 
 Searches patch names, descriptions, moods, tags, track names, roles, and instruments.
 
+### `loopcat stats`
+
+Show catalog statistics.
+
+```bash
+loopcat stats
+```
+
+Displays:
+- Total patches and tracks
+- Analyzed and converted counts
+- Total duration
+- BPM range
+- Style distribution (top 5)
+- Energy level distribution (high/medium/low)
+
 ### `loopcat play [PATCH]`
 
 Launch the TUI player with RC-300 style controls. This is the default command when running `loopcat` with no arguments.
@@ -138,8 +154,10 @@ loopcat play 42           # Play specific patch directly
 |-----|--------|
 | `j` `↓` `C-j` | Move down |
 | `k` `↑` `C-k` | Move up |
+| `C-d` `C-u` | Page down/up |
 | `Enter` | Play selected patch |
 | `t` | Theme picker |
+| `?` | Help screen |
 | `Esc` | Quit |
 
 **Player Controls:**
@@ -147,9 +165,11 @@ loopcat play 42           # Play specific patch directly
 |-----|--------|
 | `Space` | Start/stop all tracks |
 | `1` `2` `3` | Toggle individual tracks |
+| `+` `-` | Volume up/down |
 | `h` `←` | Previous patch |
 | `l` `→` | Next patch |
 | `t` | Theme picker |
+| `?` | Help screen |
 | `q` `,` | Back to patch picker |
 | `Esc` | Quit |
 

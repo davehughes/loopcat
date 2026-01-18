@@ -456,6 +456,55 @@ def search(
 
 
 @app.command()
+def stats(
+    db_path: Path = typer.Option(
+        DEFAULT_DB_PATH,
+        "--db",
+        help="Path to the SQLite database.",
+    ),
+) -> None:
+    """Show catalog statistics."""
+    db = Database(db_path)
+    s = db.get_stats()
+
+    if s["patch_count"] == 0:
+        console.print("[yellow]No patches in catalog. Run 'loopcat import' first.[/yellow]")
+        return
+
+    # Format total duration
+    total_secs = s["total_duration_seconds"]
+    hours = int(total_secs // 3600)
+    minutes = int((total_secs % 3600) // 60)
+    if hours > 0:
+        duration_str = f"{hours}h {minutes}m"
+    else:
+        duration_str = f"{minutes}m"
+
+    console.print("\n[bold]Catalog Statistics[/bold]")
+    console.print("══════════════════")
+    console.print(f"Patches: {s['patch_count']} ({s['analyzed_count']} analyzed)")
+    console.print(f"Tracks: {s['track_count']} ({s['converted_count']} converted to MP3)")
+    console.print(f"Total duration: {duration_str}")
+
+    # BPM stats
+    if s["bpm_min"] is not None:
+        console.print(f"BPM range: {s['bpm_min']:.0f}-{s['bpm_max']:.0f} (avg {s['bpm_avg']:.0f})")
+
+    # Style distribution (top 5)
+    if s["styles"]:
+        sorted_styles = sorted(s["styles"].items(), key=lambda x: -x[1])[:5]
+        style_str = ", ".join(f"{style} ({count})" for style, count in sorted_styles)
+        console.print(f"\nBy style: {style_str}")
+
+    # Energy distribution
+    if any(s["energy_distribution"].values()):
+        energy = s["energy_distribution"]
+        console.print(f"By energy: high ({energy['high']}), medium ({energy['medium']}), low ({energy['low']})")
+
+    console.print()
+
+
+@app.command()
 def export(
     format: str = typer.Option(
         "json",

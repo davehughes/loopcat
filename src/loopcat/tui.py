@@ -102,9 +102,11 @@ class ControlsFooter(Static):
             content = (
                 "[dim]track[/] [bold]1[/] [bold]2[/] [bold]3[/]  "
                 "[dim]start/stop all[/] [bold]␣[/]  "
+                "[dim]vol[/] [bold]+[/] [bold]-[/]  "
                 "[dim]patch[/] [bold]h[/] [bold]←[/] [bold]→[/] [bold]l[/]  "
                 "[bold]t[/] [dim]theme[/]  "
-                "[bold]q[/] [bold],[/] [dim]choose[/]  "
+                "[bold]?[/] [dim]help[/]  "
+                "[bold]q[/] [dim]choose[/]  "
                 "[bold]esc[/] [dim]quit[/]"
             )
         super().__init__(content, **kwargs)
@@ -309,6 +311,7 @@ class PatchPickerScreen(Screen):
         Binding("ctrl+d", "page_down", show=False, priority=True),
         Binding("ctrl+u", "page_up", show=False, priority=True),
         Binding("t", "cycle_theme", show=False),
+        Binding("question_mark", "show_help", show=False),
     ]
 
     def __init__(self, patches: list[Patch], selected_index: int = 0) -> None:
@@ -329,6 +332,7 @@ class PatchPickerScreen(Screen):
             "[bold]C-d[/] [bold]C-u[/] [dim]fast[/]  "
             "[bold]enter[/] [dim]play[/]  "
             "[bold]t[/] [dim]theme[/]  "
+            "[bold]?[/] [dim]help[/]  "
             "[bold]esc[/] [dim]quit[/]"
         )
 
@@ -422,6 +426,10 @@ class PatchPickerScreen(Screen):
             set_theme(theme)
             self.app.notify(f"Theme: {theme}")
 
+    def action_show_help(self) -> None:
+        """Show help screen."""
+        self.app.push_screen(HelpScreen())
+
 
 class PlayerScreen(Screen):
     """Screen for playing a patch with TUI controls."""
@@ -470,6 +478,10 @@ class PlayerScreen(Screen):
         Binding("q", "back_to_list", show=False),
         Binding("comma", "back_to_list", show=False),
         Binding("escape", "quit", show=False),
+        Binding("plus", "volume_up", show=False),
+        Binding("equal", "volume_up", show=False),  # = is + without shift
+        Binding("minus", "volume_down", show=False),
+        Binding("question_mark", "show_help", show=False),
     ]
 
     def __init__(
@@ -649,6 +661,101 @@ class PlayerScreen(Screen):
         if self.player:
             self.player.stop()
         self.app.exit()
+
+    def action_volume_up(self) -> None:
+        """Increase volume."""
+        if self.player:
+            new_vol = self.player.adjust_volume(0.1)
+            self._update_volume_display(new_vol)
+
+    def action_volume_down(self) -> None:
+        """Decrease volume."""
+        if self.player:
+            new_vol = self.player.adjust_volume(-0.1)
+            self._update_volume_display(new_vol)
+
+    def _update_volume_display(self, volume: float) -> None:
+        """Show volume notification."""
+        pct = int(volume * 100)
+        bars = int(volume * 10)
+        bar_str = "█" * bars + "░" * (10 - bars)
+        self.app.notify(f"Volume: {bar_str} {pct}%", timeout=1)
+
+    def action_show_help(self) -> None:
+        """Show help screen."""
+        self.app.push_screen(HelpScreen())
+
+
+class HelpScreen(ModalScreen):
+    """Modal screen showing keyboard shortcuts help."""
+
+    CSS = """
+    HelpScreen {
+        align: center middle;
+    }
+
+    #help-dialog {
+        width: 60;
+        height: auto;
+        max-height: 80%;
+        border: solid $primary;
+        background: $surface;
+        padding: 1 2;
+    }
+
+    #help-title {
+        text-align: center;
+        text-style: bold;
+        margin-bottom: 1;
+    }
+
+    #help-content {
+        height: auto;
+    }
+
+    .help-section {
+        margin-bottom: 1;
+    }
+
+    .help-header {
+        text-style: bold;
+        color: $accent;
+    }
+    """
+
+    BINDINGS = [
+        Binding("escape", "dismiss", "Close"),
+        Binding("question_mark", "dismiss", "Close"),
+        Binding("q", "dismiss", "Close"),
+    ]
+
+    def compose(self) -> ComposeResult:
+        help_text = """[bold $accent]Playback[/]
+  [bold]space[/]     start/stop all tracks
+  [bold]1 2 3[/]     toggle individual tracks
+  [bold]+ -[/]       adjust volume
+
+[bold $accent]Navigation[/]
+  [bold]h ←[/]       previous patch
+  [bold]l →[/]       next patch
+  [bold]q ,[/]       back to patch list
+
+[bold $accent]Interface[/]
+  [bold]t[/]         theme picker
+  [bold]?[/]         this help screen
+  [bold]esc[/]       quit
+
+[bold $accent]Patch Picker[/]
+  [bold]C-j ↓[/]     move down
+  [bold]C-k ↑[/]     move up
+  [bold]C-d C-u[/]   page down/up
+  [bold]enter[/]     play selected patch
+  [bold]esc[/]       quit"""
+
+        with VerticalScroll(id="help-dialog"):
+            yield Static("[bold]Keyboard Shortcuts[/]", id="help-title")
+            yield Static(help_text, id="help-content")
+            yield Static("\n[dim]Press ? or esc to close[/]", id="help-hint")
 
 
 class LoopCatApp(App):

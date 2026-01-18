@@ -54,6 +54,7 @@ class AudioPlayer:
         self._block_size = 1024
         self._running = False
         self._thread: Optional[threading.Thread] = None
+        self._volume = 1.0  # Volume level (0.0 to 1.0)
 
     def load_track(self, track_number: int, file_path: Path) -> None:
         """Load a track from an audio file (WAV or MP3).
@@ -99,6 +100,30 @@ class AudioPlayer:
         if len(self.state.tracks) == 1:
             self._sample_rate = sample_rate
 
+    def get_volume(self) -> float:
+        """Get current volume level (0.0 to 1.0)."""
+        return self._volume
+
+    def set_volume(self, volume: float) -> None:
+        """Set volume level.
+
+        Args:
+            volume: Volume level between 0.0 and 1.0.
+        """
+        self._volume = max(0.0, min(1.0, volume))
+
+    def adjust_volume(self, delta: float) -> float:
+        """Adjust volume by a delta amount.
+
+        Args:
+            delta: Amount to adjust (positive or negative).
+
+        Returns:
+            New volume level.
+        """
+        self.set_volume(self._volume + delta)
+        return self._volume
+
     def _audio_callback(self, outdata: np.ndarray, frames: int, time_info, status) -> None:
         """Audio stream callback - mixes all playing tracks."""
         outdata.fill(0)
@@ -142,7 +167,8 @@ class AudioPlayer:
             if any_playing:
                 self.state.master_position += frames
 
-        # Clamp to prevent clipping
+        # Apply volume and clamp to prevent clipping
+        outdata *= self._volume
         np.clip(outdata, -1.0, 1.0, out=outdata)
 
     def _position_update_loop(self) -> None:

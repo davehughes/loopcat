@@ -200,11 +200,26 @@ Export catalog metadata to various formats.
 ```bash
 loopcat export --format json --output ./metadata   # JSON sidecars
 loopcat export --format csv --output catalog.csv   # CSV spreadsheet
+loopcat export --format folder --output ~/Music    # Organized folder with symlinks
+loopcat export --format folder --output ~/Music --wav  # Use WAV instead of MP3
 ```
 
 **JSON format**: Creates per-patch and per-track sidecar files with full metadata.
 
 **CSV format**: Flat export with all track metadata, suitable for spreadsheets or sample managers.
+
+**Folder format**: Creates an organized folder structure with symlinks to audio files:
+```
+{output}/loopcat/
+├── 001-Midnight_Funk_Groove/
+│   ├── 1-Pocket_Bass_Line.mp3 → ~/.local/share/loopcat/mp3/...
+│   ├── 2-Rhythm_Guitar.mp3 → ~/.local/share/loopcat/mp3/...
+│   ├── 3-Wah_Lead.mp3 → ~/.local/share/loopcat/mp3/...
+│   └── _metadata.json
+├── 002-Ambient_Dreamscape/
+│   └── ...
+```
+Ideal for importing into DAWs like Bitwig Studio via the browser. Use `--wav` to link to WAV files instead of MP3s.
 
 ## Data Storage
 

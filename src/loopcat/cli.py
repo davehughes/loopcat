@@ -371,13 +371,18 @@ def export(
         "json",
         "--format",
         "-f",
-        help="Export format: json, csv",
+        help="Export format: json, csv, folder",
     ),
     output: Path = typer.Option(
         ...,
         "--output",
         "-o",
         help="Output file or directory.",
+    ),
+    use_wav: bool = typer.Option(
+        False,
+        "--wav",
+        help="For folder export, use WAV files instead of MP3.",
     ),
     db_path: Path = typer.Option(
         DEFAULT_DB_PATH,
@@ -389,7 +394,7 @@ def export(
     from loopcat.export import export_catalog
 
     db = Database(db_path)
-    export_catalog(db, format, output, console)
+    export_catalog(db, format, output, console, use_wav=use_wav)
 
 
 @app.command()

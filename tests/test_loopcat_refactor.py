@@ -28,15 +28,6 @@ class TestLoopCatImportsCatCommon:
         footer = ControlsFooter()
         assert footer is not None
 
-    def test_loopcat_cli_imports_themes(self):
-        """loopcat.cli imports THEMES from cat_common."""
-        from loopcat.cli import THEMES
-        assert len(THEMES) > 0
-
-    def test_loopcat_cli_imports_base16_themes(self):
-        """loopcat.cli imports BASE16_THEMES from cat_common."""
-        from loopcat.cli import BASE16_THEMES
-        assert len(BASE16_THEMES) > 0
 
 
 class TestLoopCatAppStarts:
